@@ -18,11 +18,14 @@ DATABASE_URL = (
     f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # <-- garante que conexões "mortas" sejam reestabelecidas
+    pool_recycle=280  # <-- ajusta para menos que wait_timeout do MySQL
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
-
 
 def get_db():
     db = SessionLocal()
@@ -30,6 +33,7 @@ def get_db():
         yield db
     except Exception as e:
         logger.error(f"Database session error: {e}")
+        raise  # re-raise para que o erro seja propagado
     finally:
-        logger.error(f"Database session error: {e}")
         db.close()
+        

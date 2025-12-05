@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import Annotated
+# schemas/user.py
+from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict
+from typing import Annotated, Optional
+from datetime import datetime
 
-# Tipos validados (Pydantic v2 recomendado)
+# Tipos validados
 PasswordStr = Annotated[str, Field(min_length=8)]
 
 # Campos base (compartilhados entre create/update/response)
@@ -9,26 +11,36 @@ class UserBase(BaseModel):
     usr_first_name: str
     usr_last_name: str
     usr_email: EmailStr
-    #usr_age: int | None = None
 
 # Dados recebidos ao criar usuário (inclui senha)
 class UserCreate(UserBase):
     usr_password: PasswordStr
-
+    
+    @field_validator('usr_password')
+    @classmethod
+    def validate_password_length(cls, v):
+        # Verifica se a senha não excede 72 bytes quando codificada
+        if len(v.encode('utf-8')) > 72:
+            raise ValueError('Senha muito longa (máximo 72 bytes em UTF-8)')
+        return v
 
 # Dados recebidos ao atualizar usuário (tudo opcional)
 class UserUpdate(BaseModel):
-    usr_first_name: str | None = None
-    usr_last_name: str | None = None
-    usr_email: EmailStr | None = None
-    usr_password: PasswordStr | None = None
-    #usr_age: int | None = None
-
-
+    usr_first_name: Optional[str] = None
+    usr_last_name: Optional[str] = None
+    usr_email: Optional[EmailStr] = None
+    usr_password: Optional[PasswordStr] = None
+    
+    @field_validator('usr_password')
+    @classmethod
+    def validate_password_length(cls, v):
+        if v is not None and len(v.encode('utf-8')) > 72:
+            raise ValueError('Senha muito longa (máximo 72 bytes em UTF-8)')
+        return v
 
 # Dados retornados para o cliente (não inclui senha)
 class UserResponse(UserBase):
     usr_id: int
-
-    class Config:
-        from_attributes = True  # substitui orm_mode (Pydantic v1)
+    
+    
+    model_config = ConfigDict(from_attributes=True)  # Pydantic v2
