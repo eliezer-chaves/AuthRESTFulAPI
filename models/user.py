@@ -9,3 +9,4 @@ class User(Base):
     usr_last_name = Column(String(100), nullable=False)
     usr_email = Column(String(80), unique=True, nullable=False)
     usr_password = Column(String(255), nullable=False)
+    usr_age = Column(Integer, nullable=True)
