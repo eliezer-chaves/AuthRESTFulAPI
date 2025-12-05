@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
@@ -7,111 +7,123 @@ from schemas.user import UserResponse
 from infra.providers.hash_provider import verify_password
 from infra.providers.jwt_provider import create_access_token, decode_access_token
 from logging_config import logger
+from fastapi import Response, Request   
+
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# OAuth2 scheme para extrair token do header Authorization
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-# Blacklist de tokens (em produção, use Redis ou banco de dados)
 token_blacklist = set()
 
-@router.post("/login")
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    """
-    Autentica usuário e retorna access token.
-    - **username**: email do usuário
-    - **password**: senha do usuário
-    """
-    # Busca usuário por email
-    user = db.query(User).filter(User.usr_email == form_data.username).first()
-    
-    if not user or not verify_password(form_data.password, user.usr_password):
+
+def get_token_from_cookie(request: Request):
+    token = request.cookies.get("access_token")
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email ou senha incorretos",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Token não encontrado no cookie"
         )
-    
-    # Cria token com dados do usuário
-    access_token = create_access_token(
-        data={
-            "sub": str(user.usr_id),
-            "email": user.usr_email
-        }
-    )
-    
-    logger.info(f"Usuário {user.usr_email} autenticado com sucesso")
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
 
+    return token
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(token: str = Depends(oauth2_scheme)):
+# --------------------------
+# FUNÇÃO CENTRAL DE AUTH
+# --------------------------
+def get_current_user(
+    token: str = Depends(get_token_from_cookie),
+    db: Session = Depends(get_db)
+) -> User:
     """
-    Invalida o token atual (logout).
+    Valida o token JWT e retorna o usuário autenticado.
     """
-    # Adiciona token à blacklist
-    token_blacklist.add(token)
-    logger.info("Token invalidado com sucesso")
-    return
 
-
-@router.get("/me", response_model=UserResponse)
-def get_current_user_info(
-    current_user: User = Depends(lambda token=Depends(oauth2_scheme), db=Depends(get_db): get_current_user(token, db))
-):
-    """
-    Retorna informações do usuário autenticado.
-    """
-    return current_user
-
-
-# Dependency para obter usuário autenticado
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
-    """
-    Valida token JWT e retorna usuário autenticado.
-    Pode ser usado como dependency em outras rotas protegidas.
-    """
-    # Verifica se token está na blacklist
+    # Blacklist
     if token in token_blacklist:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido ou expirado",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Token inválido ou expirado"
         )
-    
-    # Decodifica token
+
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido ou expirado",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Token inválido ou expirado"
         )
-    
-    # Extrai user_id do token
-    user_id: str = payload.get("sub")
-    if user_id is None:
+
+    user_id = payload.get("sub")
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Token inválido"
         )
-    
-    # Busca usuário no banco
+
     user = db.query(User).filter(User.usr_id == int(user_id)).first()
-    if user is None:
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuário não encontrado",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Usuário não encontrado"
         )
-    
+
     return user
+
+@router.post("/login")
+def login(data: dict, response: Response, db: Session = Depends(get_db)):
+    email = data.get("usr_email")
+    password = data.get("usr_password")
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email e senha são obrigatórios")
+
+    user = db.query(User).filter(User.usr_email == email).first()
+
+    if not user or not verify_password(password, user.usr_password):
+        raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+
+    token = create_access_token({"sub": str(user.usr_id), "email": user.usr_email})
+
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="none",   # Para desenvolvimento local
+        secure=True,      # False em HTTP local, True em produção HTTPS
+        max_age=60 * 60 * 24,  # 24 horas
+        path="/",
+          # Adicione isso para desenvolvimento local
+    )
+
+    return {"message": "Login bem-sucedido", "user": UserResponse.from_orm(user)}
+
+
+# --------------------------
+# LOGOUT
+# --------------------------
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(token: str = Depends(oauth2_scheme)):
+    token_blacklist.add(token)
+    return
+
+
+# --------------------------
+# INFO DO USUÁRIO
+# --------------------------
+# PARA ISSO:
+@router.get("/me", response_model=UserResponse)
+def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """
+    Retorna as informações do usuário autenticado.
+    O token deve vir do cookie, não do header.
+    """
+    return current_user
+
+@router.get("/test-cookie")
+def test_cookie(request: Request):
+    """Endpoint para testar se o cookie está sendo recebido"""
+    token = request.cookies.get("access_token")
+    return {
+        "cookie_received": token is not None,
+        "cookie_value_length": len(token) if token else 0,
+        "all_cookies": dict(request.cookies)
+    }

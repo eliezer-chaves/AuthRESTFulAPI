@@ -4,21 +4,20 @@ from database import get_db
 from models.user import User
 from schemas.user import UserCreate, UserUpdate, UserResponse
 from infra.providers.hash_provider import hash_password
-from routers.auth import get_current_user
+from routers.auth import get_current_user  # agora funciona
 from logging_config import logger
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-# ✔ GET ALL - Retorna lista de UserResponse (PROTEGIDO)
+
 @router.get("/", response_model=list[UserResponse])
 def get_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    users = db.query(User).all()
-    return users
+    return db.query(User).all()
 
-# ✔ GET BY ID - Retorna UserResponse (PROTEGIDO)
+
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user_by_id(
     user_id: int,
@@ -27,46 +26,31 @@ def get_user_by_id(
 ):
     user = db.query(User).filter(User.usr_id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Usuário não encontrado"
-        )
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
     return user
 
-# ✔ CREATE - Retorna UserResponse (PÚBLICO - signup)
-@router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/signup", response_model=UserResponse, status_code=201)
 def create_user(payload: UserCreate, db: Session = Depends(get_db)):
-    try:
-        # Verifica email duplicado
-        exists = db.query(User).filter(User.usr_email == payload.usr_email).first()
-        if exists:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, 
-                detail="Email já cadastrado"
-            )
 
-        # Cria usuário com senha hash
-        new_user = User(
-            usr_first_name=payload.usr_first_name,
-            usr_last_name=payload.usr_last_name,
-            usr_email=payload.usr_email,
-            usr_password=hash_password(payload.usr_password)
-        )
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
+    exists = db.query(User).filter(User.usr_email == payload.usr_email).first()
+    if exists:
+        raise HTTPException(status_code=409, detail="Email já cadastrado")
 
-        return new_user
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erro ao criar usuário: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro interno ao criar usuário"
-        )
+    new_user = User(
+        usr_first_name=payload.usr_first_name,
+        usr_last_name=payload.usr_last_name,
+        usr_email=payload.usr_email,
+        usr_password=hash_password(payload.usr_password)
+    )
 
-# ✔ UPDATE - Retorna UserResponse (PROTEGIDO - apenas próprio usuário)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+
 @router.put("/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
@@ -74,56 +58,36 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Verifica se usuário está tentando atualizar seu próprio perfil
+
     if current_user.usr_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Você só pode atualizar seu próprio perfil"
-        )
-    
+        raise HTTPException(status_code=403, detail="Apenas seu próprio usuário")
+
     user = db.query(User).filter(User.usr_id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Usuário não encontrado"
-        )
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
-    # Atualiza apenas os campos que foram fornecidos
-    if payload.usr_first_name is not None:
-        user.usr_first_name = payload.usr_first_name
-    if payload.usr_last_name is not None:
-        user.usr_last_name = payload.usr_last_name
-    if payload.usr_email is not None:
-        user.usr_email = payload.usr_email
-    if payload.usr_password is not None:
-        user.usr_password = hash_password(payload.usr_password)
+    for field, value in payload.dict(exclude_unset=True).items():
+        setattr(user, field, value)
 
     db.commit()
     db.refresh(user)
 
     return user
 
-# ✔ DELETE - Retorna nada (PROTEGIDO - apenas próprio usuário)
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+
+@router.delete("/{user_id}", status_code=204)
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Verifica se usuário está tentando deletar seu próprio perfil
+
     if current_user.usr_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Você só pode deletar seu próprio perfil"
-        )
-    
+        raise HTTPException(status_code=403, detail="Apenas seu próprio usuário")
+
     user = db.query(User).filter(User.usr_id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Usuário não encontrado"
-        )
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
     db.delete(user)
     db.commit()
-    return
