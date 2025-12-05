@@ -4,29 +4,36 @@ from database import get_db
 from models.user import User
 from schemas.user import UserCreate, UserUpdate, UserResponse
 from infra.providers.hash_provider import hash_password
-
+from routers.auth import get_current_user
 from logging_config import logger
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-# ✔ GET ALL - Retorna lista de UserResponse
+# ✔ GET ALL - Retorna lista de UserResponse (PROTEGIDO)
 @router.get("/", response_model=list[UserResponse])
-def get_users(db: Session = Depends(get_db)):
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     users = db.query(User).all()
-    return users  # FastAPI converterá automaticamente usando UserResponse
+    return users
 
-# ✔ GET BY ID - Retorna UserResponse
+# ✔ GET BY ID - Retorna UserResponse (PROTEGIDO)
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user_by_id(user_id: int, db: Session = Depends(get_db)):
+def get_user_by_id(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     user = db.query(User).filter(User.usr_id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="Usuário não encontrado"
         )
-    return user  # Retorna o objeto SQLAlchemy diretamente
+    return user
 
-# ✔ CREATE - Retorna UserResponse
+# ✔ CREATE - Retorna UserResponse (PÚBLICO - signup)
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     try:
@@ -49,9 +56,9 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(new_user)
 
-        return new_user  # Retorna o objeto SQLAlchemy
+        return new_user
     except HTTPException:
-        raise  # Re-lança HTTPExceptions para que sejam tratadas corretamente
+        raise
     except Exception as e:
         logger.error(f"Erro ao criar usuário: {e}")
         raise HTTPException(
@@ -59,9 +66,21 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
             detail="Erro interno ao criar usuário"
         )
 
-# ✔ UPDATE - Retorna UserResponse
+# ✔ UPDATE - Retorna UserResponse (PROTEGIDO - apenas próprio usuário)
 @router.put("/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Verifica se usuário está tentando atualizar seu próprio perfil
+    if current_user.usr_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você só pode atualizar seu próprio perfil"
+        )
+    
     user = db.query(User).filter(User.usr_id == user_id).first()
     if not user:
         raise HTTPException(
@@ -82,11 +101,22 @@ def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)
     db.commit()
     db.refresh(user)
 
-    return user  # Retorna o objeto SQLAlchemy
+    return user
 
-# ✔ DELETE - Retorna nada (204 No Content)
+# ✔ DELETE - Retorna nada (PROTEGIDO - apenas próprio usuário)
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Verifica se usuário está tentando deletar seu próprio perfil
+    if current_user.usr_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você só pode deletar seu próprio perfil"
+        )
+    
     user = db.query(User).filter(User.usr_id == user_id).first()
     if not user:
         raise HTTPException(
