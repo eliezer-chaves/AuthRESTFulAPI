@@ -30,4 +30,5 @@ def get_db():
     except Exception as e:
         logger.error(f"Database session error: {e}")
     finally:
+        logger.error(f"Database session error: {e}")
         db.close()
