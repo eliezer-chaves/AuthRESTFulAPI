@@ -1,17 +1,15 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import Annotated
 
-
 # Tipos validados (Pydantic v2 recomendado)
 PasswordStr = Annotated[str, Field(min_length=8)]
-
 
 # Campos base (compartilhados entre create/update/response)
 class UserBase(BaseModel):
     usr_first_name: str
     usr_last_name: str
     usr_email: EmailStr
-
+    #usr_age: int | None = None
 
 # Dados recebidos ao criar usuário (inclui senha)
 class UserCreate(UserBase):
@@ -24,6 +22,8 @@ class UserUpdate(BaseModel):
     usr_last_name: str | None = None
     usr_email: EmailStr | None = None
     usr_password: PasswordStr | None = None
+    #usr_age: int | None = None
+
 
 
 # Dados retornados para o cliente (não inclui senha)
