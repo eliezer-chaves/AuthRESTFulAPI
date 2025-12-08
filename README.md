@@ -1,12 +1,13 @@
 # 📘 BaseAPI — Backend em FastAPI com Autenticação JWT + Cookies HTTP-only
 
-Este projeto é uma API moderna construída com FastAPI, utilizando:
+Este projeto é uma API construída com FastAPI, utilizando:
 - Autenticação JWT com cookies HTTP-only
 - ORM SQLAlchemy
 - Migrações com Alembic
 - Validação de email
 - Suporte a PostgreSQL e MySQL
 - SSL local via mkcert
+- Logs
 
 ## 🚀 Tecnologias Principais
 - FastAPI
@@ -23,12 +24,16 @@ Este projeto é uma API moderna construída com FastAPI, utilizando:
 1️⃣ Criar e ativar o ambiente virtual
 
 Windows
+
 ````python -m venv venv````
+
 ````source venv/Scripts/activate````
  
 Linux/Mac
+
 ````python -m venv venv````
-````source venv/Scripts/activate````
+
+````source venv/bin/activate````
 
 2️⃣ Instalar dependências
 ```` pip install -r requirements.txt ````
