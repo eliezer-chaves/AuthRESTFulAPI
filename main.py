@@ -3,17 +3,15 @@ from routers import users, auth
 from logging_config import logger
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Aplicação iniciada com sucesso")
+    
     yield
     logger.info("Aplicação encerrada")
 
-origins = [
-    "http://localhost:4200",
-    "http://127.0.0.1:4200",
-]
 
 app = FastAPI(
     title="BaseAPI",
@@ -22,22 +20,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Atualize suas origins para incluir todas as portas possíveis
-origins = [
-    "http://localhost:4200",
-    "http://127.0.0.1:4200",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    # Adicione outras portas que possa usar
-]
+
+origins = os.getenv("CORS_ORIGINS")
+origins = [origin.strip() for origin in origins.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Use a lista origins
+    allow_origins=origins,  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],  # IMPORTANTE: expõe headers
+    expose_headers=["*"], 
 )
 
 # Registra routers

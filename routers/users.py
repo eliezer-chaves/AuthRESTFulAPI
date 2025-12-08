@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from schemas.user import UserCreate, UserUpdate, UserResponse
 from infra.providers.hash_provider import hash_password
-from routers.auth import get_current_user  # agora funciona
-from logging_config import logger
+from infra.auth.auth_service import get_current_user
+from infra.providers.jwt_provider import create_access_token
+from infra.auth.cookie_manager import set_auth_cookie
 
 router = APIRouter(prefix="/users", tags=["Users"])
-
 
 @router.get("/", response_model=list[UserResponse])
 def get_users(
@@ -16,7 +16,6 @@ def get_users(
     current_user: User = Depends(get_current_user)
 ):
     return db.query(User).all()
-
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user_by_id(
@@ -31,7 +30,7 @@ def get_user_by_id(
 
 
 @router.post("/signup", response_model=UserResponse, status_code=201)
-def create_user(payload: UserCreate, db: Session = Depends(get_db)):
+def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
 
     exists = db.query(User).filter(User.usr_email == payload.usr_email).first()
     if exists:
@@ -47,6 +46,10 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # 🔥 LOGIN AUTOMÁTICO APÓS CADASTRO
+    token = create_access_token({"sub": str(new_user.usr_id)})
+    set_auth_cookie(response, token)
 
     return new_user
 
