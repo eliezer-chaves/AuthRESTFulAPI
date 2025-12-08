@@ -24,10 +24,12 @@ Este projeto é uma API construída com FastAPI, utilizando:
 1️⃣ Criar e ativar o ambiente virtual
 
 Windows
-
-````python -m venv venv````
-
-````source venv/Scripts/activate````
+````
+python -m venv venv
+````
+````
+source venv/Scripts/activate
+````
  
 Linux/Mac
 
