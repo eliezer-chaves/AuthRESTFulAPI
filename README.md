@@ -50,10 +50,10 @@ Renomeie o arquivo:
 .env.example → .env
 
 Preencha suas variáveis
-`DATABASE_URL=mysql+pymysql://root:senha@localhost/dbname`
-`JWT_SECRET=coloque_um_segredo_forte`
+````DATABASE_URL=mysql+pymysql://root:senha@localhost/dbname````
+````JWT_SECRET=coloque_um_segredo_forte````
 
->[Gerador de Chaves](https://jwtsecretkeygenerator.com/)
+>[Gerador de Chaves JWT](https://jwtsecretkeygenerator.com/)
 
 
 ## 🔐 Configurar HTTPS Local com mkcert
