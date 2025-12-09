@@ -93,14 +93,18 @@ pip install -r requirements.txt
 
 **Para MySQL:**
 ```env
-DATABASE_URL=mysql+pymysql://root:senha@localhost/dbname
+DB_USER=root	
+DB_PASSWORD=root
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=db	
 JWT_SECRET=coloque_um_segredo_forte
 ```
 
-**Para PostgreSQL:**
+**Origens de Domínio Permitidas Para Acessar a API**
+***Importante para CORS***
 ```env
-DATABASE_URL=postgresql://usuario:senha@localhost:5432/dbname
-JWT_SECRET=coloque_um_segredo_forte
+CORS_ORIGINS=https://localhost:4200
 ```
 
 > **Dica:** Gere uma chave JWT forte usando: [Gerador de Chaves JWT](https://jwtsecretkeygenerator.com/)
