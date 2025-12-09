@@ -98,13 +98,17 @@ DB_PASSWORD=root
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=db	
-JWT_SECRET=coloque_um_segredo_forte
 ```
 
 **Origens de Domínio Permitidas Para Acessar a API**
 ***Importante para CORS***
 ```env
 CORS_ORIGINS=https://localhost:4200
+```
+
+**Chave JWT**
+```env
+JWT_SECRET=coloque_um_segredo_forte
 ```
 
 > **Dica:** Gere uma chave JWT forte usando: [Gerador de Chaves JWT](https://jwtsecretkeygenerator.com/)
