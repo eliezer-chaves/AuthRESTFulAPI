@@ -168,7 +168,7 @@ alembic upgrade head
 ### Criar uma nova migração:
 
 ```bash
-alembic revision --autogenerate -m "descrição da migração"
+alembic revision -m "descrição da migração"
 ```
 
 ### Reverter última migração:

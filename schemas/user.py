@@ -11,6 +11,7 @@ class UserBase(BaseModel):
     usr_first_name: str
     usr_last_name: str
     usr_email: EmailStr
+    usr_phone: str
 
 # Dados recebidos ao criar usuário (inclui senha)
 class UserCreate(UserBase):

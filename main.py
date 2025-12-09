@@ -7,10 +7,10 @@ import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Aplicação iniciada com sucesso")
+    logger.info("Aplication started")
     
     yield
-    logger.info("Aplicação encerrada")
+    logger.info("Aplication ended")
 
 
 app = FastAPI(
