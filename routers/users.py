@@ -33,21 +33,28 @@ def get_user_by_id(
 def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
 
     exists = db.query(User).filter(User.usr_email == payload.usr_email).first()
+    
     if exists:
-        raise HTTPException(status_code=409, detail="Email já cadastrado")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "email_already_registered",
+                "title": "This email is already registered.",
+                "message": "This email is already registered. Please try another email or sign in."
+            })
 
     new_user = User(
         usr_first_name=payload.usr_first_name,
         usr_last_name=payload.usr_last_name,
         usr_email=payload.usr_email,
-        usr_password=hash_password(payload.usr_password)
+        usr_password=hash_password(payload.usr_password),
+        usr_phone=payload.usr_phone
     )
 
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    # 🔥 LOGIN AUTOMÁTICO APÓS CADASTRO
     token = create_access_token({"sub": str(new_user.usr_id)})
     set_auth_cookie(response, token)
 
