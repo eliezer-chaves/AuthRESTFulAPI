@@ -7,7 +7,7 @@ BASE_COOKIE_CONFIG = {
     "httponly": True,
     "samesite": "none",
     "secure": True,
-    "max_age": int(os.getenv("TOKEN_MAX_AGE", "3600")),
+    "max_age": int(os.getenv("TOKEN_MAX_AGE")),
     "path": "/"
 }
 
@@ -15,14 +15,14 @@ BASE_COOKIE_CONFIG = {
 # FUNÇÕES DE COOKIE
 # ---------------------------
 def set_auth_cookie(response: Response, token: str):
-    """Aplica o cookie JWT usando a configuração global."""
+    
     cfg = BASE_COOKIE_CONFIG.copy()
     cfg["value"] = token
     response.set_cookie(**cfg)
 
 
 def clear_auth_cookie(response: Response):
-    """Remove o cookie do navegador."""
+    
     cfg = BASE_COOKIE_CONFIG.copy()
     cfg["value"] = ""
     cfg["max_age"] = 0
@@ -30,7 +30,7 @@ def clear_auth_cookie(response: Response):
 
 
 def get_token_from_cookie(request: Request) -> str:
-    """Lê o token do cookie, já padronizado."""
+    
     token = request.cookies.get(BASE_COOKIE_CONFIG["key"])
     if not token:
         raise HTTPException(

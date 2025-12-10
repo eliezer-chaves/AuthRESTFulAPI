@@ -7,10 +7,10 @@ import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Aplication started")
+    #logger.info("Aplication started")
     
     yield
-    logger.info("Aplication ended")
+    #logger.info("Aplication ended")
 
 
 app = FastAPI(
@@ -37,6 +37,3 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(auth.router)
 
-@app.get("/", tags=["Health"])
-def health_check():
-    return {"status": "ok", "message": "API is running"}

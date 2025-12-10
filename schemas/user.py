@@ -12,6 +12,10 @@ class UserBase(BaseModel):
     usr_last_name: str
     usr_email: EmailStr
     usr_phone: str | None = None
+    
+class UserLogin(BaseModel):
+    usr_email: EmailStr
+    usr_password: PasswordStr
 
 # Dados recebidos ao criar usuário (inclui senha)
 class UserCreate(UserBase):
@@ -39,9 +43,7 @@ class UserUpdate(BaseModel):
             raise ValueError('Senha muito longa (máximo 72 bytes em UTF-8)')
         return v
 
-# Dados retornados para o cliente (não inclui senha)
 class UserResponse(UserBase):
     usr_id: int
     
-    
-    model_config = ConfigDict(from_attributes=True)  # Pydantic v2
+    model_config = ConfigDict(from_attributes=True)  
