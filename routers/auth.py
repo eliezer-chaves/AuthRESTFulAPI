@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from schemas.user import *
-from core.providers import verify_password, hash_password
+from core.providers.hash_provider import verify_password, hash_password
 from core.providers.jwt_provider import create_access_token
 from core.handler.cookie_manager import set_auth_cookie, clear_auth_cookie, get_token_from_cookie
 from core.services.auth_service import token_blacklist

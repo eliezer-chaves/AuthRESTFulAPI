@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
-from core.providers import decode_access_token
+from core.providers.jwt_provider import decode_access_token
 from core.handler.cookie_manager import get_token_from_cookie
 
 token_blacklist = set()
