@@ -1,15 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Response
+from logging_config import logger
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from schemas.user import *
-from infra.providers.hash_provider import verify_password
-from infra.providers.jwt_provider import create_access_token
-from infra.auth.cookie_manager import set_auth_cookie, clear_auth_cookie, get_token_from_cookie
-from infra.auth.auth_service import token_blacklist
-from infra.auth.auth_service import get_current_user
-from logging_config import logger
-from infra.providers.hash_provider import hash_password
+from core.providers import verify_password, hash_password
+from core.providers.jwt_provider import create_access_token
+from core.handler.cookie_manager import set_auth_cookie, clear_auth_cookie, get_token_from_cookie
+from core.services.auth_service import token_blacklist
+from core.services.auth_service import get_current_user
+
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 

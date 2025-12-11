@@ -1,7 +1,5 @@
 from passlib.context import CryptContext
 import bcrypt
-import hashlib
-import base64
 from logging_config import logger
 
 
