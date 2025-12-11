@@ -43,6 +43,9 @@ class UserUpdate(BaseModel):
             raise ValueError('Senha muito longa (máximo 72 bytes em UTF-8)')
         return v
 
+class UserEmail(BaseModel):
+    usr_email: EmailStr
+
 class UserResponse(UserBase):
     usr_id: int
     

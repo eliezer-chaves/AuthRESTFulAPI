@@ -145,6 +145,31 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
     finally:
         db.close()
 
+
+@router.post("/send-email-code")
+def send_email_with_code(payload: UserEmail, db: Session = Depends(get_db)):
+    
+    user = db.query(User).filter(User.usr_email == payload.usr_email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "user_not_found",
+                "title": "User Not Found",
+                "message": "No user found with the provided email."
+            }
+        )
+    
+    
+    
+    return {
+        "type": "password_reset_email_sent",
+        "title": "Password Reset Email Sent",
+        "message": "If an account with that email exists, a password reset email has been sent."
+    }
+
+
 @router.post("/logout", status_code=204)
 def logout(response: Response, token: str = Depends(get_token_from_cookie)):
     token_blacklist.add(token)
