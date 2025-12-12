@@ -18,8 +18,6 @@ async def send_reset_code_email(email: str, code: str, user_name: str):
             "user_name": user_name,
             "reset_code": code,
             "expiration_minutes": expiration_minutes,
-            
-            "reset_link": f"{front_url}/auth/validate-code",
             "current_year": 2025
         })
 

@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from logging_config import logger
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
 from schemas.user import *
 from core.providers.hash_provider import verify_password, hash_password
-from core.providers.jwt_provider import create_access_token
+from core.providers.jwt_provider import create_access_token, create_reset_token
 from core.handler.cookie_manager import set_auth_cookie, clear_auth_cookie, get_token_from_cookie
 from core.services.auth_service import token_blacklist
 from core.services.auth_service import get_current_user
@@ -15,6 +15,7 @@ import os
 from core.services.email_service import send_reset_code_email
 from models.password_reset_code import PasswordResetCode
 from core.utils.email_rate_limit import *
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
@@ -154,9 +155,70 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
             }
         )
 
+@router.post("/validate-code")
+def validate_code(body: dict, response: Response, db: Session = Depends(get_db)):
+    code = body.get("code")
 
-@router.post("/send-email-code")
-async def send_email_with_code(payload: UserEmail, request: Request, db: Session = Depends(get_db)):
+    # Sem código → invalid_or_expired_code
+    if not code:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "invalid_or_expired_code",
+                "title": "Invalid or expired code.",
+                "message": "A valid verification code is required."
+            }
+        )
+
+    reset_code = (
+        db.query(PasswordResetCode)
+        .filter(
+            PasswordResetCode.psc_code == code,
+            PasswordResetCode.psc_used_at.is_(None)
+        )
+        .first()
+    )
+
+    # Código não encontrado → no_reset_code_found
+    if not reset_code:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "no_reset_code_found",
+                "title": "Code not found.",
+                "message": "No valid reset code was found."
+            }
+        )
+
+    # Normalizar timezone
+    expires_at = reset_code.psc_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    # Código expirado → invalid_or_expired_code
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "type": "invalid_or_expired_code",
+                "title": "Invalid or expired code.",
+                "message": "The verification code has expired."
+            }
+        )
+
+    # Marca como usado
+    reset_code.psc_used_at = datetime.now(timezone.utc)
+    db.commit()
+    
+    # Sucesso → password_reset_code_verified
+    return {
+        "type": "password_reset_code_verified",
+        "title": "Code verified successfully.",
+        "message": "The verification code is valid."
+    }
+
+@router.post("/send-reset-code")
+async def send_reset_code(payload: UserEmail, request: Request, db: Session = Depends(get_db)):
     # Verifica rate limiting ANTES de qualquer outra operação
     rate_limit_info = await check_rate_limit(payload.usr_email, request, db)
     
