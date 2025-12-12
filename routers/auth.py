@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from logging_config import logger
 from sqlalchemy.orm import Session
 from database import get_db
@@ -14,7 +14,7 @@ from datetime import timedelta, timezone
 import os
 from core.services.email_service import send_reset_code_email
 from models.password_reset_code import PasswordResetCode
-
+from core.utils.email_rate_limit import *
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
@@ -155,9 +155,24 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
         )
 
 
-
 @router.post("/send-email-code")
-async def send_email_with_code(payload: UserEmail, db: Session = Depends(get_db)):
+async def send_email_with_code(payload: UserEmail, request: Request, db: Session = Depends(get_db)):
+    # Verifica rate limiting ANTES de qualquer outra operação
+    rate_limit_info = await check_rate_limit(payload.usr_email, request, db)
+    
+    if rate_limit_info and rate_limit_info.get("blocked"):
+        raise HTTPException(
+            status_code=429,  # Too Many Requests
+            detail={
+                "type": "rate_limit_exceeded",
+                "title": "Too Many Requests",
+                "message": f"You have exceeded the maximum number of email requests. Please try again in {rate_limit_info['remaining_minutes']} minutes.",
+                "blocked_until": rate_limit_info["blocked_until"],
+                "remaining_seconds": rate_limit_info["remaining_seconds"],
+                "remaining_minutes": rate_limit_info["remaining_minutes"],
+                "attempts": rate_limit_info["attempts"]
+            }
+        )
 
     user = db.query(User).filter(User.usr_email == payload.usr_email).first()
 
@@ -172,7 +187,6 @@ async def send_email_with_code(payload: UserEmail, db: Session = Depends(get_db)
         )
 
     code = generate_reset_code()
-
     expiration_minutes = int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
 
     try:
@@ -188,22 +202,33 @@ async def send_email_with_code(payload: UserEmail, db: Session = Depends(get_db)
         
         await send_reset_code_email(email=user.usr_email, code=code, user_name=user.usr_first_name)
 
-        return {
+        response = {
             "type": "email_code_sent",
             "title": "Code Sent",
             "message": "The recovery code has been sent to your email."
         }
+        
+        # Adiciona informações de rate limit se disponíveis
+        if rate_limit_info and not rate_limit_info.get("blocked"):
+            response["rate_limit"] = {
+                "attempts": rate_limit_info["attempts"],
+                "max_attempts": rate_limit_info["max_attempts"],
+                "remaining_attempts": rate_limit_info["remaining_attempts"]
+            }
+        
+        return response
 
     except Exception as e:
         logger.error("error saving reset code: %s", str(e))
-
-    return {
-        "type": "password_reset_email_sent",
-        "title": "Password Reset Email Sent",
-        "message": "If an account with that email exists, a password reset email has been sent."
-    }
-
-
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "internal_error",
+                "title": "Internal Error",
+                "message": "An error occurred while processing your request."
+            }
+        )
+        
 @router.post("/logout", status_code=204)
 def logout(response: Response, token: str = Depends(get_token_from_cookie)):
     token_blacklist.add(token)
