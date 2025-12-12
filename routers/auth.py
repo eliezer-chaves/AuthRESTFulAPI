@@ -100,7 +100,6 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
                 }
             )
 
-        # Verifica telefone duplicado
         if payload.usr_phone:
             exists_phone = db.query(User).filter(
                 User.usr_phone == payload.usr_phone
