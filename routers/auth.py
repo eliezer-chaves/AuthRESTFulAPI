@@ -267,7 +267,10 @@ async def send_reset_code(payload: UserEmail, request: Request, db: Session = De
         response = {
             "type": "email_code_sent",
             "title": "Code Sent",
-            "message": "The recovery code has been sent to your email."
+            "message": "The recovery code has been sent to your email.",
+            "data": {
+                "email": user.usr_email
+            }
         }
         
         # Adiciona informações de rate limit se disponíveis
