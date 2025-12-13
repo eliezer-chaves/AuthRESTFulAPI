@@ -13,6 +13,7 @@ class PasswordResetCode(Base):
     psc_expires_at = Column(DateTime(timezone=True), nullable=False)
     psc_used_at = Column(DateTime(timezone=True), nullable=True)
     psc_created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
+    psc_reset_id = Column(String(36), unique=True, index=True, nullable=False)
 
 
     usr_user = relationship("User", back_populates="usr_reset_codes")
