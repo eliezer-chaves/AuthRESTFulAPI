@@ -22,7 +22,7 @@ async def send_reset_code_email(email: str, code: str, user_name: str):
         })
 
         message = MessageSchema(
-            subject="Código para redefinição de senha",
+            subject=f"{app_name} - Reset code",
             recipients=[email],
             body=html_body,
             subtype=MessageType.html
