@@ -1,63 +1,63 @@
 # BaseAPI
 
-Backend em FastAPI com autenticação JWT + Cookies HTTP-only, ORM SQLAlchemy e migrações Alembic.
+FastAPI backend with JWT authentication + HTTP-only Cookies, SQLAlchemy ORM, and Alembic migrations.
 
-## 📋 Índice
+## 📋 Table of Contents
 
-- [Sobre o Projeto](#sobre-o-projeto)
-- [Funcionalidades](#funcionalidades)
-- [Tecnologias Utilizadas](#tecnologias-utilizadas)
-- [Pré-requisitos](#pré-requisitos)
-- [Instalação](#instalação)
-- [Configuração do Ambiente](#configuração-do-ambiente)
-- [Configuração HTTPS Local](#configuração-https-local)
-- [Migrações de Banco de Dados](#migrações-de-banco-de-dados)
-- [Executando o Projeto](#executando-o-projeto)
-- [Estrutura do Projeto](#estrutura-do-projeto)
+- [About the Project](#about-the-project)
+- [Features](#features)
+- [Technologies Used](#technologies-used)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Environment Configuration](#environment-configuration)
+- [Local HTTPS Configuration](#local-https-configuration)
+- [Database Migrations](#database-migrations)
+- [Running the Project](#running-the-project)
+- [Project Structure](#project-structure)
 - [Frontend](#frontend)
 
-## 🎯 Sobre o Projeto
+## 🎯 About the Project
 
-BaseAPI é uma API REST completa construída com FastAPI, oferecendo autenticação segura, gerenciamento de banco de dados e suporte para HTTPS local.
+BaseAPI is a complete REST API built with FastAPI, offering secure authentication, database management, and local HTTPS support.
 
-## ✨ Funcionalidades
+## ✨ Features
 
-- 🔐 **Autenticação JWT** - Tokens seguros com cookies HTTP-only
-- 🗄️ **ORM SQLAlchemy** - Gerenciamento eficiente de banco de dados
-- 🔄 **Migrações Alembic** - Controle de versão do banco de dados
-- 📧 **Validação de email** - Verificação de emails válidos
-- 🔒 **Suporte SSL** - HTTPS local com mkcert
-- 📝 **Sistema de logs** - Registro de atividades
-- 🔑 **Hash de senhas** - Bcrypt para segurança
-- 🍪 **Cookie Manager** - Gestão de cookies seguros
+- 🔐 **JWT Authentication** - Secure tokens with HTTP-only cookies
+- 🗄️ **SQLAlchemy ORM** - Efficient database management
+- 🔄 **Alembic Migrations** - Database version control
+- 📧 **Email Validation** - Valid email verification
+- 🔒 **SSL Support** - Local HTTPS with mkcert
+- 📝 **Logging System** - Activity recording
+- 🔑 **Password Hashing** - Bcrypt for security
+- 🍪 **Cookie Manager** - Secure cookie management
 
-## 🛠️ Tecnologias Utilizadas
+## 🛠️ Technologies Used
 
-- **FastAPI** - Framework web moderno e rápido
-- **Uvicorn** - Servidor ASGI
-- **SQLAlchemy** - ORM para Python
-- **Alembic** - Ferramenta de migração de banco de dados
-- **PyMySQL** - Driver MySQL para Python
-- **Psycopg2** - Adaptador PostgreSQL
-- **Passlib[bcrypt]** - Biblioteca para hash de senhas
-- **Python-JOSE** - Implementação de JWT
-- **Python-Multipart** - Suporte para upload de arquivos
-- **Email-Validator** - Validação de endereços de email
-- **Python-Dotenv** - Gerenciamento de variáveis de ambiente
+- **FastAPI** - Modern and fast web framework
+- **Uvicorn** - ASGI server
+- **SQLAlchemy** - ORM for Python
+- **Alembic** - Database migration tool
+- **PyMySQL** - MySQL driver for Python
+- **Psycopg2** - PostgreSQL adapter
+- **Passlib[bcrypt]** - Password hashing library
+- **Python-JOSE** - JWT implementation
+- **Python-Multipart** - File upload support
+- **Email-Validator** - Email address validation
+- **Python-Dotenv** - Environment variable management
 
-## 📦 Pré-requisitos
+## 📦 Prerequisites
 
-Antes de começar, certifique-se de ter instalado:
+Before starting, make sure you have installed:
 
 - **Python** 3.11+ 
-- **pip** (gerenciador de pacotes Python)
-- **MySQL** ou **PostgreSQL**
-- **Git** (para clonar o repositório)
-- **mkcert** (para certificados SSL locais - opcional)
+- **pip** (Python package manager)
+- **MySQL** or **PostgreSQL**
+- **Git** (to clone the repository)
+- **mkcert** (for local SSL certificates - optional)
 
-## 🚀 Instalação
+## 🚀 Installation
 
-### 1️⃣ Criar e ativar o ambiente virtual
+### 1️⃣ Create and activate virtual environment
 
 **Windows:**
 ```bash
@@ -75,23 +75,23 @@ python -m venv venv
 source venv/bin/activate
 ```
 
-### 2️⃣ Instalar dependências
+### 2️⃣ Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## ⚙️ Configuração do Ambiente
+## ⚙️ Environment Configuration
 
-### Renomeie o arquivo de exemplo:
+### Rename the example file:
 
 ```bash
 .env.example → .env
 ```
 
-### Preencha suas variáveis:
+### Fill in your variables:
 
-**Para MySQL:**
+**For MySQL:**
 ```env
 DB_USER=root	
 DB_PASSWORD=root
@@ -100,165 +100,165 @@ DB_PORT=3306
 DB_NAME=db	
 ```
 
-**Origens de Domínio Permitidas Para Acessar a API**
-***Importante para CORS***
+**Allowed Domain Origins to Access the API**
+***Important for CORS***
 ```env
 CORS_ORIGINS=https://localhost:4200
 ```
 
-**Chave JWT**
+**JWT Key**
 ```env
-JWT_SECRET=coloque_um_segredo_forte
+JWT_SECRET=put_a_strong_secret_here
 ```
 
-> **Dica:** Gere uma chave JWT forte usando: [Gerador de Chaves JWT](https://jwtsecretkeygenerator.com/)
+> **Tip:** Generate a strong JWT key using: [JWT Secret Key Generator](https://jwtsecretkeygenerator.com/)
 
-## 🔒 Configuração HTTPS Local
+## 🔒 Local HTTPS Configuration
 
-Este projeto inclui suporte a SSL local usando mkcert.
+This project includes local SSL support using mkcert.
 
-### 📥 1️⃣ Baixar o mkcert
+### 📥 1️⃣ Download mkcert
 
-Baixe o executável para Windows:
+Download the executable for Windows:
 
 [https://github.com/FiloSottile/mkcert/releases](https://github.com/FiloSottile/mkcert/releases)
 
-Arquivo recomendado: `mkcert-v1.4.4-windows-amd64.exe`
+Recommended file: `mkcert-v1.4.4-windows-amd64.exe`
 
-Renomeie para: `mkcert.exe`
+Rename to: `mkcert.exe`
 
-E coloque em uma pasta no PATH, por exemplo: `C:\Windows\System32`
+And place it in a folder in PATH, for example: `C:\Windows\System32`
 
-Ou simplesmente mantenha na pasta do projeto.
+Or simply keep it in the project folder.
 
-### 🏦 2️⃣ Instalar o root CA (somente na primeira vez)
+### 🏦 2️⃣ Install the root CA (only the first time)
 
-Abra o PowerShell como administrador e execute:
+Open PowerShell as administrator and run:
 
 ```bash
 mkcert -install
 ```
 
-### 📍 3️⃣ Ir até a pasta do projeto
+### 📍 3️⃣ Navigate to the project folder
 
 ```bash
 cd BaseAPI
 ```
 
-### 🔏 4️⃣ Gerar os certificados SSL
+### 🔏 4️⃣ Generate SSL certificates
 
 ```bash
 mkcert localhost 127.0.0.1 ::1
 ```
 
-> **Nota:** Apenas para desenvolvimento local. Algumas hospedagens já fornecem o certificado SSL, que é necessário para usar HTTP Cookie Only.
+> **Note:** Only for local development. Some hosting providers already provide SSL certificates, which are necessary to use HTTP-only cookies.
 
-Isso irá criar arquivos como:
-- `localhost+2.pem` (certificado)
-- `localhost+2-key.pem` (chave privada)
+This will create files like:
+- `localhost+2.pem` (certificate)
+- `localhost+2-key.pem` (private key)
 
-## 🧪 Migrações de Banco de Dados
+## 🧪 Database Migrations
 
-### Aplicar migration (irá gerar a tabela usr_user):
+### Apply migration (will generate the usr_user table):
 
 ```bash
 alembic upgrade head
 ```
 
-### Criar uma nova migração:
+### Create a new migration:
 
 ```bash
-alembic revision -m "descrição da migração"
+alembic revision -m "migration description"
 ```
 
-### Reverter última migração:
+### Rollback last migration:
 
 ```bash
 alembic downgrade -1
 ```
 
-### Ver histórico de migrações:
+### View migration history:
 
 ```bash
 alembic history
 ```
 
-## ▶️ Executando o Projeto
+## ▶️ Running the Project
 
-### Servidor de Desenvolvimento (HTTP)
+### Development Server (HTTP)
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Acesse: `http://localhost:8000`
+Access: `http://localhost:8000`
 
-### Servidor de Desenvolvimento (HTTPS)
+### Development Server (HTTPS)
 
-Após gerar os certificados, rode:
+After generating the certificates, run:
 
 ```bash
 uvicorn main:app --reload --ssl-keyfile localhost+2-key.pem --ssl-certfile localhost+2.pem --host 0.0.0.0 --port 8000
 ```
 
-Agora seu backend está no HTTPS local: [https://localhost:8000](https://localhost:8000)
+Now your backend is on local HTTPS: [https://localhost:8000](https://localhost:8000)
 
-## 📂 Estrutura do Projeto
+## 📂 Project Structure
 
 ```
 BaseAPI/
-├── alembic/              # Migrações de banco de dados
-│   └── versions/         # Versões de migração
-├── infra/                # Infraestrutura
-│   ├── auth/            # Serviços de autenticação
+├── alembic/              # Database migrations
+│   └── versions/         # Migration versions
+├── infra/                # Infrastructure
+│   ├── auth/            # Authentication services
 │   │   ├── auth_service.py
 │   │   └── cookie_manager.py
-│   ├── dependencies/    # Dependências do FastAPI
-│   └── providers/       # Provedores (hash, JWT)
+│   ├── dependencies/    # FastAPI dependencies
+│   └── providers/       # Providers (hash, JWT)
 │       ├── hash_provider.py
 │       └── jwt_provider.py
-├── models/              # Modelos SQLAlchemy
+├── models/              # SQLAlchemy models
 │   └── user.py
-├── routers/             # Rotas da API
+├── routers/             # API routes
 │   ├── auth.py
 │   └── users.py
-├── schemas/             # Schemas Pydantic
+├── schemas/             # Pydantic schemas
 │   └── user.py
-├── .env                 # Variáveis de ambiente (não versionado)
-├── .env.example         # Exemplo de variáveis de ambiente
-├── .gitignore           # Arquivos ignorados pelo Git
-├── alembic.ini          # Configuração do Alembic
-├── database.py          # Configuração do banco de dados
-├── logging_config.py    # Configuração de logs
-├── main.py              # Ponto de entrada da aplicação
-└── requirements.txt     # Dependências do projeto
+├── .env                 # Environment variables (not versioned)
+├── .env.example         # Environment variables example
+├── .gitignore           # Files ignored by Git
+├── alembic.ini          # Alembic configuration
+├── database.py          # Database configuration
+├── logging_config.py    # Logging configuration
+├── main.py              # Application entry point
+└── requirements.txt     # Project dependencies
 ```
 
 ## 🔗 Frontend
 
-Este projeto serve como backend para uma aplicação frontend. Para configurar e executar o frontend, acesse:
+This project serves as the backend for a frontend application. To configure and run the frontend, visit:
 
 **BaseFrontAngular:** [https://github.com/eliezer-chaves/BaseFrontAngular.git](https://github.com/eliezer-chaves/BaseFrontAngular.git)
 
-Certifique-se de que o backend esteja rodando antes de iniciar o frontend para garantir o funcionamento completo da aplicação.
+Make sure the backend is running before starting the frontend to ensure the full functionality of the application.
 
-## 📚 Documentação da API
+## 📚 API Documentation
 
-Com o servidor rodando, acesse:
+With the server running, access:
 
 - **Swagger UI:** `https://localhost:8000/docs`
 - **ReDoc:** `https://localhost:8000/redoc`
 
-## 📝 Licença
+## 📝 License
 
-Projeto de uso pessoal e educacional.
+Personal and educational use project.
 
-## 👨‍💻 Autor
+## 👨‍💻 Author
 
-Desenvolvido por Eliézer Chaves
+Developed by Eliézer Chaves
 
 ---
 
-⭐ Se este projeto foi útil para você, considere dar uma estrela no repositório!
+⭐ If this project was useful to you, consider giving the repository a star!
 
-Desenvolvido com ❤️ usando FastAPI
+Developed with ❤️ using FastAPI
