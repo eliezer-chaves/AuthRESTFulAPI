@@ -23,7 +23,6 @@ import uuid
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-
 @router.post("/login")
 def login(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
     try:
@@ -86,7 +85,6 @@ def login(payload: UserLogin, response: Response, db: Session = Depends(get_db))
                 "message": "An unexpected error occurred. Please try again later."
             }
         )
-
 
 @router.post("/signup", status_code=201)
 def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
@@ -161,7 +159,19 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
         )
 
 @router.post("/validate-code")
-def validate_code(body: dict, response: Response, db: Session = Depends(get_db)):
+def validate_code(body: dict, response: Response, request: Request, db: Session = Depends(get_db)):
+    existing_cookie = request.cookies.get("code_valid")
+    if existing_cookie:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "reset_already_validated",
+                "title": "Reset already validated",
+                "message": "Password reset already validated. Please update your password or request a new reset email."
+            }
+        )
+
+    code = body.get("code")
     code = body.get("code")
 
     # Sem código → invalid_or_expired_code
@@ -176,22 +186,22 @@ def validate_code(body: dict, response: Response, db: Session = Depends(get_db))
         )
 
     reset_code = (
-        db.query(PasswordResetCode)
-        .filter(
-            PasswordResetCode.psc_code == code,
-            PasswordResetCode.psc_used_at.is_(None)
-        )
-        .first()
+    db.query(PasswordResetCode)
+    .filter(PasswordResetCode.psc_code == code)
+    .first()
     )
 
-    # Código não encontrado → no_reset_code_found
     if not reset_code:
+        raise HTTPException(status_code=404, detail="Invalid code")
+
+    # 🔥 BLOQUEIO DEFINITIVO
+    if reset_code.psc_used_at is not None:
         raise HTTPException(
-            status_code=404,
+            status_code=409,
             detail={
-                "type": "no_reset_code_found",
-                "title": "Code not found.",
-                "message": "No valid reset code was found."
+                "type": "reset_already_used",
+                "title": "Reset already completed",
+                "message": "This reset code has already been used."
             }
         )
 
@@ -235,7 +245,6 @@ def validate_code(body: dict, response: Response, db: Session = Depends(get_db))
         "title": "Code verified successfully.",
         "message": "The verification code is valid."
     }
-
 
 @router.post("/send-reset-code")
 async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session = Depends(get_db)):
@@ -335,40 +344,48 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
 
 
 @router.get("/code-valid")
-def allow_reset_password(request: Request, db: Session = Depends(get_db)):
+def allow_reset_password(
+    request: Request,
+    db: Session = Depends(get_db)
+):
     cookie = request.cookies.get("code_valid")
-
     if not cookie:
-        raise HTTPException(status_code=403, detail={"access": "denied", "message": "not_found"})
+        raise HTTPException(status_code=403, detail="Reset not authorized")
 
+    # 1️⃣ Estrutura do cookie
     try:
         code, signature = cookie.split("|")
     except ValueError:
-        raise HTTPException(status_code=401)
-    
-    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(), code.encode(), hashlib.sha256).hexdigest()
-    
-    if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401)
-    
+        raise HTTPException(status_code=403, detail="Invalid reset token")
+
+    # 2️⃣ Assinatura HMAC
+    expected_signature = hmac.new(
+        os.getenv("COOKIE_SECRET").encode(),
+        code.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected_signature):
+        raise HTTPException(status_code=403, detail="Invalid reset token")
+
+    # 3️⃣ Reset válido no banco
     reset = (
         db.query(PasswordResetCode)
-        .filter_by(psc_code=code)
-        .first())
-    
-    #email = reset.usr_user.usr_email
-    
-    expires_at = reset.psc_expires_at.replace(tzinfo=timezone.utc)
+        .filter(
+            PasswordResetCode.psc_code == code,
+            PasswordResetCode.psc_used_at.is_(None),
+            PasswordResetCode.psc_expires_at > datetime.now(timezone.utc)
+        )
+        .first()
+    )
 
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401)
+    if not reset:
+        raise HTTPException(status_code=403, detail="Reset flow expired or invalid")
 
-    
     return {
-        "email": "reset_password_allowed",
-        "expires_at": expires_at
-    }  
-    
+        "allowed": True,
+        "expires_at": reset.psc_expires_at
+    } 
     
 @router.get("/has-cookie")
 def check_cookie(request: Request, db: Session = Depends(get_db)):
@@ -406,6 +423,116 @@ def check_cookie(request: Request, db: Session = Depends(get_db)):
         "email": mask_email(email),
         "expires_at": expires_at
     }  
+
+@router.post("/update-password")
+def update_password(body: dict, request: Request,response: Response, db: Session = Depends(get_db)):
+    usr_password = body.get("usr_password")
+    usr_password_confirmation = body.get("usr_password_confirmation")
+
+    # 1️⃣ Valida payload
+    if not usr_password or not usr_password_confirmation:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing password fields"
+        )
+
+    if usr_password != usr_password_confirmation:
+        raise HTTPException(
+            status_code=400,
+            detail="Passwords do not match"
+        )
+
+    # 2️⃣ Recupera cookie de autorização
+    cookie = request.cookies.get("code_valid")
+    if not cookie:
+        raise HTTPException(
+            status_code=403,
+            detail="Reset not authorized"
+        )
+
+    try:
+        code, signature = cookie.split("|")
+    except ValueError:
+        raise HTTPException(status_code=401)
+
+    # 3️⃣ Valida assinatura do cookie
+    expected = hmac.new(
+        os.getenv("COOKIE_SECRET").encode(),
+        code.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401)
+
+    # 4️⃣ Busca reset (NÃO filtra por used_at)
+    reset = (
+        db.query(PasswordResetCode)
+        .filter(PasswordResetCode.psc_code == code)
+        .first()
+    )
+
+    if not reset:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid reset flow"
+        )
+
+    # 5️⃣ Expiração
+    expires_at = reset.psc_expires_at
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=410,
+            detail="Reset expired"
+        )
+
+
+    # 6️⃣ Evita reutilização
+    if reset.psc_used_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Reset already used"
+        )
+
+    # 7️⃣ Busca usuário
+    user = (
+        db.query(User)
+        .filter(User.usr_id == reset.psc_user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # 8️⃣ Atualiza senha
+    user.usr_password = hash_password(usr_password)
+
+    # 9️⃣ Marca reset como usado
+    reset.psc_used_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    response.delete_cookie(
+        key="code_valid",
+        path="/"
+    )
+
+    response.delete_cookie(
+        key="mail_sended",
+        path="/"
+    )
+    return {
+        "type": "password_updated",
+        "title": "Password updated",
+        "message": "Your password has been updated successfully."
+    }
 
 
 @router.post("/logout", status_code=204)
