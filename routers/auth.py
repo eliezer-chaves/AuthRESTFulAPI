@@ -160,18 +160,7 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
 
 @router.post("/validate-code")
 def validate_code(body: dict, response: Response, request: Request, db: Session = Depends(get_db)):
-    existing_cookie = request.cookies.get("code_valid")
-    if existing_cookie:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "reset_already_validated",
-                "title": "Reset already validated",
-                "message": "Password reset already validated. Please update your password or request a new reset email."
-            }
-        )
 
-    code = body.get("code")
     code = body.get("code")
 
     # Sem código → invalid_or_expired_code
@@ -192,9 +181,13 @@ def validate_code(body: dict, response: Response, request: Request, db: Session 
     )
 
     if not reset_code:
-        raise HTTPException(status_code=404, detail="Invalid code")
+        raise HTTPException(status_code=404, detail={
+                "type": "invalid_or_expired_code",
+                "title": "Invalid code",
+                "message": "A valid verification code is required."
+                
+            })
 
-    # 🔥 BLOQUEIO DEFINITIVO
     if reset_code.psc_used_at is not None:
         raise HTTPException(
             status_code=409,
@@ -344,11 +337,10 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
 
 
 @router.get("/code-valid")
-def allow_reset_password(
-    request: Request,
-    db: Session = Depends(get_db)
-):
+def allow_reset_password(request: Request, db: Session = Depends(get_db)):
+    
     cookie = request.cookies.get("code_valid")
+    
     if not cookie:
         raise HTTPException(status_code=403, detail="Reset not authorized")
 
@@ -378,10 +370,14 @@ def allow_reset_password(
         )
         .first()
     )
+    
 
     if not reset:
         raise HTTPException(status_code=403, detail="Reset flow expired or invalid")
-
+    
+    reset.psc_used_at = datetime.now(timezone.utc)
+    db.commit()
+    
     return {
         "allowed": True,
         "expires_at": reset.psc_expires_at
@@ -411,6 +407,11 @@ def check_cookie(request: Request, db: Session = Depends(get_db)):
         .filter_by(psc_reset_id=reset_id)
         .first())
     
+    if reset.psc_used_at is not None:
+        raise HTTPException(status_code=401, detail={
+            "title": "cookie already used"
+        })
+    
     email = reset.usr_user.usr_email
     
     expires_at = reset.psc_expires_at.replace(tzinfo=timezone.utc)
@@ -429,7 +430,7 @@ def update_password(body: dict, request: Request,response: Response, db: Session
     usr_password = body.get("usr_password")
     usr_password_confirmation = body.get("usr_password_confirmation")
 
-    # 1️⃣ Valida payload
+   
     if not usr_password or not usr_password_confirmation:
         raise HTTPException(
             status_code=400,
@@ -442,8 +443,8 @@ def update_password(body: dict, request: Request,response: Response, db: Session
             detail="Passwords do not match"
         )
 
-    # 2️⃣ Recupera cookie de autorização
     cookie = request.cookies.get("code_valid")
+    
     if not cookie:
         raise HTTPException(
             status_code=403,
@@ -491,14 +492,6 @@ def update_password(body: dict, request: Request,response: Response, db: Session
         )
 
 
-    # 6️⃣ Evita reutilização
-    if reset.psc_used_at is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Reset already used"
-        )
-
-    # 7️⃣ Busca usuário
     user = (
         db.query(User)
         .filter(User.usr_id == reset.psc_user_id)
