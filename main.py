@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="BaseAPI",
-    description="API RESTful com autenticação JWT",
+    description="API RESTful com autenticação JWT. Toda gerencia de autenticação está aqui",
     version="1.0.0",
     lifespan=lifespan
 )

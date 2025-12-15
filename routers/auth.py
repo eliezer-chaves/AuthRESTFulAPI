@@ -160,7 +160,6 @@ def create_user(payload: UserCreate, response: Response, db: Session = Depends(g
             }
         )
 
-
 @router.post("/validate-code")
 def validate_code(body: dict, response: Response, db: Session = Depends(get_db)):
     code = body.get("code")
@@ -214,9 +213,23 @@ def validate_code(body: dict, response: Response, db: Session = Depends(get_db))
 
     # Marca como usado
     reset_code.psc_used_at = datetime.now(timezone.utc)
-    db.commit()
+    # Get code
+    code = reset_code.psc_code
+    
+    signature = hmac.new(os.getenv("COOKIE_SECRET").encode(), code.encode(), hashlib.sha256).hexdigest()
 
-    # Sucesso → password_reset_code_verified
+    cookie_value = f"{code}|{signature}"
+
+    response.set_cookie(
+            key="code_valid",
+            value=cookie_value,
+            max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
+            path="/",
+            httponly=True,
+            secure=True,
+            samesite="none"
+    )
+        
     return {
         "type": "password_reset_code_verified",
         "title": "Code verified successfully.",
@@ -321,6 +334,42 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
         )
 
 
+@router.get("/code-valid")
+def allow_reset_password(request: Request, db: Session = Depends(get_db)):
+    cookie = request.cookies.get("code_valid")
+
+    if not cookie:
+        raise HTTPException(status_code=403, detail={"access": "denied", "message": "not_found"})
+
+    try:
+        code, signature = cookie.split("|")
+    except ValueError:
+        raise HTTPException(status_code=401)
+    
+    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(), code.encode(), hashlib.sha256).hexdigest()
+    
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401)
+    
+    reset = (
+        db.query(PasswordResetCode)
+        .filter_by(psc_code=code)
+        .first())
+    
+    #email = reset.usr_user.usr_email
+    
+    expires_at = reset.psc_expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401)
+
+    
+    return {
+        "email": "reset_password_allowed",
+        "expires_at": expires_at
+    }  
+    
+    
 @router.get("/has-cookie")
 def check_cookie(request: Request, db: Session = Depends(get_db)):
     cookie = request.cookies.get("mail_sended")
