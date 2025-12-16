@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean
 from database import Base
 from sqlalchemy.orm import relationship
 from models.password_reset_code import PasswordResetCode
@@ -12,5 +12,7 @@ class User(Base):
     usr_phone = Column(String(20), nullable=True)
     usr_email = Column(String(80), unique=True, nullable=False)
     usr_password = Column(String(255), nullable=False)
+    usr_email_verified = Column(Boolean, nullable=False, server_default="false")
+    usr_user_active = Column(Boolean, nullable=False, server_default="false")
 
     usr_reset_codes = relationship(PasswordResetCode, back_populates="usr_user")
