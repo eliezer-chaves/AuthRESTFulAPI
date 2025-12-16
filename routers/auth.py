@@ -10,7 +10,7 @@ from core.handler.cookie_manager import set_auth_cookie, clear_auth_cookie, get_
 from core.services.auth_service import token_blacklist
 from core.services.auth_service import get_current_user
 from core.utils.generate_random_code import generate_reset_code
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta
 import os
 from core.services.email_service import send_reset_code_email
 from models.password_reset_code import PasswordResetCode
@@ -18,6 +18,7 @@ from core.utils.email_rate_limit import *
 import hmac
 import hashlib
 from core.utils.mask_email import mask_email
+from core.utils.generate_email_token import generate_email_token, hash_token
 import uuid
 
 
@@ -30,433 +31,176 @@ def login(payload: UserLogin, response: Response, db: Session = Depends(get_db))
         password = payload.usr_password
 
         if not email or not password:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "type": "missing_credentials",
-                    "title": "Missing Credentials",
-                    "message": "Email and password are required."
-                }
-            )
+            raise HTTPException(status_code=400)
 
         user = db.query(User).filter(User.usr_email == email).first()
 
-        if user is None:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "type": "user_not_found",
-                    "title": "Email Not Registered",
-                    "message": "The email provided is not associated with any account."
-                }
-            )
-
         if not user or not verify_password(password, user.usr_password):
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "type": "invalid_credentials",
-                    "title": "Invalid Credentials",
-                    "message": "The email or password provided is incorrect, try again."
-                }
-            )
+            raise HTTPException(status_code=401)
 
-        token = create_access_token(
-            {"sub": str(user.usr_id), "email": user.usr_email})
+        token = create_access_token({"sub": str(user.usr_id), "email": user.usr_email})
         set_auth_cookie(response, token)
 
-        return {
-            "type": "user_logged_in_success",
-            "title": "User Logged In",
-            "message": "Logged in successfully."
-        }
+        return {"message": "Logged in successfully"}
 
-    except HTTPException as http_err:
-        raise http_err
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error during login: %s", str(e))
+        raise HTTPException(status_code=500)
 
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "internal_server_error",
-                "title": "Internal Server Error",
-                "message": "An unexpected error occurred. Please try again later."
-            }
-        )
 
 @router.post("/signup", status_code=201)
 def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
     try:
-        # Verifica email duplicado
-        exists = db.query(User).filter(
-            User.usr_email == payload.usr_email
-        ).first()
-
+        exists = db.query(User).filter(User.usr_email == payload.usr_email).first()
         if exists:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "type": "email_already_registered",
-                    "title": "This email is already registered.",
-                    "message": "This email is already registered. Please try another email or sign in."
-                }
-            )
+            raise HTTPException(status_code=409)
 
-        if payload.usr_phone:
-            exists_phone = db.query(User).filter(
-                User.usr_phone == payload.usr_phone
-            ).first()
-
-            if exists_phone:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "type": "phone_already_registered",
-                        "title": "Phone Already Registered",
-                        "message": "This phone number is already associated with an existing account."
-                    }
-                )
-
-        # Cria usuário
         new_user = User(
             usr_first_name=payload.usr_first_name,
             usr_last_name=payload.usr_last_name,
             usr_email=payload.usr_email,
             usr_password=hash_password(payload.usr_password),
-            usr_phone=payload.usr_phone
+            usr_phone=payload.usr_phone,
         )
 
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
 
-        # Gera cookie JWT
+        email_token = generate_email_token()
+        email_token_hash = hash_token(email_token)
+
         token = create_access_token({"sub": str(new_user.usr_id)})
         set_auth_cookie(response, token)
 
-        return {
-            "type": "user_created_success",
-            "title": "User Created Successfully",
-            "message": "User created successfully."
-        }
+        return {"message": "User created successfully"}
 
-    #  IMPORTANTE: preserva erros levantados manualmente
-    except HTTPException as e:
-        raise e
-
-    #  Só cai aqui se for algo realmente inesperado
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Unexpected error creating user: %s", str(e))
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "internal_server_error",
-                "title": "Internal Server Error",
-                "message": "An unexpected error occurred. Please try again later."
-            }
-        )
+        raise HTTPException(status_code=500)
+
 
 @router.post("/validate-code")
 def validate_code(body: dict, response: Response, request: Request, db: Session = Depends(get_db)):
-
     code = body.get("code")
 
-    # Sem código → invalid_or_expired_code
     if not code:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "invalid_or_expired_code",
-                "title": "Invalid or expired code.",
-                "message": "A valid verification code is required."
-            }
-        )
+        raise HTTPException(status_code=400)
 
-    reset_code = (
-    db.query(PasswordResetCode)
-    .filter(PasswordResetCode.psc_code == code)
-    .first()
-    )
+    reset_code = db.query(PasswordResetCode).filter(
+        PasswordResetCode.psc_code == code
+    ).first()
 
-    if not reset_code:
-        raise HTTPException(status_code=404, detail={
-                "type": "invalid_or_expired_code",
-                "title": "Invalid code",
-                "message": "A valid verification code is required."
-                
-            })
+    if not reset_code or reset_code.psc_used_at is not None:
+        raise HTTPException(status_code=404)
 
-    if reset_code.psc_used_at is not None:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "reset_already_used",
-                "title": "Reset already completed",
-                "message": "This reset code has already been used."
-            }
-        )
+    if reset_code.psc_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410)
 
-    # Normalizar timezone
-    expires_at = reset_code.psc_expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    reset_code.psc_used_at = datetime.utcnow()
 
-    # Código expirado → invalid_or_expired_code
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=410,
-            detail={
-                "type": "invalid_or_expired_code",
-                "title": "Invalid or expired code.",
-                "message": "The verification code has expired."
-            }
-        )
-
-    # Marca como usado
-    reset_code.psc_used_at = datetime.now(timezone.utc)
-    # Get code
-    code = reset_code.psc_code
-    
-    signature = hmac.new(os.getenv("COOKIE_SECRET").encode(), code.encode(), hashlib.sha256).hexdigest()
-
-    cookie_value = f"{code}|{signature}"
-
-    response.set_cookie(
-            key="code_valid",
-            value=cookie_value,
-            max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
-            path="/",
-            httponly=True,
-            secure=True,
-            samesite="none"
-    )
-        
-    return {
-        "type": "password_reset_code_verified",
-        "title": "Code verified successfully.",
-        "message": "The verification code is valid."
-    }
-
-@router.post("/send-reset-code")
-async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session = Depends(get_db)):
-    # Verifica rate limiting ANTES de qualquer outra operação
-    rate_limit_info = await check_rate_limit(payload.usr_email, request, db)
-
-    if rate_limit_info and rate_limit_info.get("blocked"):
-        raise HTTPException(
-            status_code=429,  # Too Many Requests
-            detail={
-                "type": "rate_limit_exceeded",
-                "title": "Too Many Requests",
-                "message": f"You have exceeded the maximum number of email requests. Please try again in {rate_limit_info['remaining_minutes']} minutes.",
-                "blocked_until": rate_limit_info["blocked_until"],
-                "remaining_seconds": rate_limit_info["remaining_seconds"],
-                "remaining_minutes": rate_limit_info["remaining_minutes"],
-                "attempts": rate_limit_info["attempts"]
-            }
-        )
-
-    user = db.query(User).filter(User.usr_email == payload.usr_email).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "type": "user_not_found",
-                "title": "User Not Found",
-                "message": "No user found with the provided email."
-            }
-        )
-
-    code = generate_reset_code()
-    expiration_minutes = int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
-
-    try:
-        reset_id = str(uuid.uuid4())
-
-        reset_entry = PasswordResetCode(
-            psc_user_id=user.usr_id,
-            psc_code=code,
-            psc_reset_id=reset_id,
-            psc_expires_at=datetime.now(timezone.utc) + timedelta(minutes=expiration_minutes),
-        )
-
-        db.add(reset_entry)
-        db.commit()
-        db.refresh(reset_entry)
-
-        await send_reset_code_email(email=user.usr_email, code=code, user_name=user.usr_first_name)
-
-        signature = hmac.new(os.getenv("COOKIE_SECRET").encode(),
-                            reset_id.encode(),
-                            hashlib.sha256).hexdigest()
-
-        cookie_value = f"{reset_id}|{signature}"
-
-        response.set_cookie(
-            key="mail_sended",
-            value=cookie_value,
-            max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
-            path="/",
-            httponly=True,
-            secure=True,
-            samesite="none"
-        )
-
-        return {
-            "type": "email_code_sent",
-            "title": "Code Sent",
-            "message": "The recovery code has been sent to your email.",
-            # "data": {
-            #     "email": user.usr_email
-            # }
-        }
-
-        # Adiciona informações de rate limit se disponíveis
-        if rate_limit_info and not rate_limit_info.get("blocked"):
-            response["rate_limit"] = {
-                "attempts": rate_limit_info["attempts"],
-                "max_attempts": rate_limit_info["max_attempts"],
-                "remaining_attempts": rate_limit_info["remaining_attempts"]
-            }
-
-        return response
-
-    except Exception as e:
-        logger.error("error saving reset code: %s", str(e))
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "internal_error",
-                "title": "Internal Error",
-                "message": "An error occurred while processing your request."
-            }
-        )
-
-
-@router.get("/code-valid")
-def allow_reset_password(request: Request, db: Session = Depends(get_db)):
-    
-    cookie = request.cookies.get("code_valid")
-    
-    if not cookie:
-        raise HTTPException(status_code=403, detail="Reset not authorized")
-
-    # 1️⃣ Estrutura do cookie
-    try:
-        code, signature = cookie.split("|")
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Invalid reset token")
-
-    # 2️⃣ Assinatura HMAC
-    expected_signature = hmac.new(
+    signature = hmac.new(
         os.getenv("COOKIE_SECRET").encode(),
         code.encode(),
         hashlib.sha256
     ).hexdigest()
 
-    if not hmac.compare_digest(signature, expected_signature):
-        raise HTTPException(status_code=403, detail="Invalid reset token")
-
-    # 3️⃣ Reset válido no banco
-    reset = (
-        db.query(PasswordResetCode)
-        .filter(
-            PasswordResetCode.psc_code == code,
-            PasswordResetCode.psc_used_at.is_(None),
-            PasswordResetCode.psc_expires_at > datetime.now(timezone.utc)
-        )
-        .first()
+    response.set_cookie(
+        key="code_valid",
+        value=f"{code}|{signature}",
+        max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
+        httponly=True,
+        secure=True,
+        samesite="none"
     )
-    
+
+    return {"message": "Code verified successfully"}
+
+
+@router.post("/send-reset-code")
+async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.usr_email == payload.usr_email).first()
+    if not user:
+        raise HTTPException(status_code=404)
+
+    code = generate_reset_code()
+    expiration_minutes = int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
+    reset_id = str(uuid.uuid4())
+
+    reset_entry = PasswordResetCode(
+        psc_user_id=user.usr_id,
+        psc_code=code,
+        psc_reset_id=reset_id,
+        psc_expires_at=datetime.utcnow() + timedelta(minutes=expiration_minutes),
+    )
+
+    db.add(reset_entry)
+    db.commit()
+
+    await send_reset_code_email(user.usr_email, code, user.usr_first_name)
+
+    signature = hmac.new(
+        os.getenv("COOKIE_SECRET").encode(),
+        reset_id.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    response.set_cookie(
+        key="mail_sended",
+        value=f"{reset_id}|{signature}",
+        max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
+        httponly=True,
+        secure=True,
+        samesite="none"
+    )
+
+    return {"message": "Code sent"}
+
+
+@router.get("/code-valid")
+def allow_reset_password(request: Request, db: Session = Depends(get_db)):
+    cookie = request.cookies.get("code_valid")
+    if not cookie:
+        raise HTTPException(status_code=403)
+
+    code, signature = cookie.split("|")
+
+    expected = hmac.new(
+        os.getenv("COOKIE_SECRET").encode(),
+        code.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=403)
+
+    reset = db.query(PasswordResetCode).filter(
+        PasswordResetCode.psc_code == code,
+        PasswordResetCode.psc_used_at.is_(None),
+        PasswordResetCode.psc_expires_at > datetime.utcnow()
+    ).first()
 
     if not reset:
-        raise HTTPException(status_code=403, detail="Reset flow expired or invalid")
-    
-    reset.psc_used_at = datetime.now(timezone.utc)
+        raise HTTPException(status_code=403)
+
+    reset.psc_used_at = datetime.utcnow()
     db.commit()
-    
-    return {
-        "allowed": True,
-        "expires_at": reset.psc_expires_at
-    } 
-    
-@router.get("/has-cookie")
-def check_cookie(request: Request, db: Session = Depends(get_db)):
-    cookie = request.cookies.get("mail_sended")
 
-    if not cookie:
-        raise HTTPException(status_code=403, detail={"access": "denied", "message": "not_found"})
+    return {"allowed": True, "expires_at": reset.psc_expires_at}
 
-    try:
-        reset_id, signature = cookie.split("|")
-    except ValueError:
-        raise HTTPException(status_code=401)
-    
-    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(),
-                        reset_id.encode(),
-                        hashlib.sha256).hexdigest()
-    
-    if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401)
-    
-    reset = (
-        db.query(PasswordResetCode)
-        .filter_by(psc_reset_id=reset_id)
-        .first())
-    
-    if reset.psc_used_at is not None:
-        raise HTTPException(status_code=401, detail={
-            "title": "cookie already used"
-        })
-    
-    email = reset.usr_user.usr_email
-    
-    expires_at = reset.psc_expires_at.replace(tzinfo=timezone.utc)
-
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401)
-
-    
-    return {
-        "email": mask_email(email),
-        "expires_at": expires_at
-    }  
 
 @router.post("/update-password")
-def update_password(body: dict, request: Request,response: Response, db: Session = Depends(get_db)):
-    usr_password = body.get("usr_password")
-    usr_password_confirmation = body.get("usr_password_confirmation")
-
-   
-    if not usr_password or not usr_password_confirmation:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing password fields"
-        )
-
-    if usr_password != usr_password_confirmation:
-        raise HTTPException(
-            status_code=400,
-            detail="Passwords do not match"
-        )
-
+def update_password(body: dict, request: Request, response: Response, db: Session = Depends(get_db)):
     cookie = request.cookies.get("code_valid")
-    
     if not cookie:
-        raise HTTPException(
-            status_code=403,
-            detail="Reset not authorized"
-        )
+        raise HTTPException(status_code=403)
 
-    try:
-        code, signature = cookie.split("|")
-    except ValueError:
-        raise HTTPException(status_code=401)
+    code, signature = cookie.split("|")
 
-    # 3️⃣ Valida assinatura do cookie
     expected = hmac.new(
         os.getenv("COOKIE_SECRET").encode(),
         code.encode(),
@@ -466,77 +210,23 @@ def update_password(body: dict, request: Request,response: Response, db: Session
     if not hmac.compare_digest(signature, expected):
         raise HTTPException(status_code=401)
 
-    # 4️⃣ Busca reset (NÃO filtra por used_at)
-    reset = (
-        db.query(PasswordResetCode)
-        .filter(PasswordResetCode.psc_code == code)
-        .first()
-    )
+    reset = db.query(PasswordResetCode).filter(
+        PasswordResetCode.psc_code == code
+    ).first()
 
-    if not reset:
-        raise HTTPException(
-            status_code=404,
-            detail="Invalid reset flow"
-        )
+    if not reset or reset.psc_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410)
 
-    # 5️⃣ Expiração
-    expires_at = reset.psc_expires_at
-
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-    if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=410,
-            detail="Reset expired"
-        )
-
-
-    user = (
-        db.query(User)
-        .filter(User.usr_id == reset.psc_user_id)
-        .first()
-    )
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-    # 8️⃣ Atualiza senha
-    user.usr_password = hash_password(usr_password)
-
-    # 9️⃣ Marca reset como usado
-    reset.psc_used_at = datetime.now(timezone.utc)
+    user = db.query(User).filter(User.usr_id == reset.psc_user_id).first()
+    user.usr_password = hash_password(body["usr_password"])
+    reset.psc_used_at = datetime.utcnow()
 
     db.commit()
 
-    response.delete_cookie(
-        key="code_valid",
-        path="/"
-    )
+    response.delete_cookie("code_valid")
+    response.delete_cookie("mail_sended")
 
-    response.delete_cookie(
-        key="mail_sended",
-        path="/"
-    )
-    return {
-        "type": "password_updated",
-        "title": "Password updated",
-        "message": "Your password has been updated successfully."
-    }
-
-
-@router.post("/logout", status_code=204)
-def logout(response: Response, token: str = Depends(get_token_from_cookie)):
-    token_blacklist.add(token)
-    clear_auth_cookie(response)
-    return {
-        "type": "user_logout_success",
-        "title": "Logout Successfuly",
-        "message": "User logout successfuly."
-    }
+    return {"message": "Password updated"}
 
 
 @router.get("/me", response_model=UserResponse)
