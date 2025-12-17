@@ -86,7 +86,7 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
         
         await send_confirmation_email(new_user.usr_email, new_user.usr_first_name, email_token)
         
-        hash_token = make_hash_token(email_token)
+        hash_token = email_token
         signature = hmac.new(os.getenv("COOKIE_SECRET").encode(), hash_token.encode(), hashlib.sha256).hexdigest()
 
         cookie_value = f"{hash_token}|{signature}"
@@ -140,14 +140,16 @@ def check_cookie(request: Request, db: Session = Depends(get_db)):
 @router.post("/confirm-account")
 def validate_account(body: dict, response: Response, db: Session = Depends(get_db)):
     token_from_url = body.get("token")
-    print(f"🔑 Token recebido: {token_from_url}")
-    
+
     if not token_from_url:
         raise HTTPException(status_code=400, detail="Token não fornecido")
 
+    token_from_url
+
     # Busca token no banco
     token_db = db.query(Token).filter(Token.ect_hash_token == token_from_url).first()
-    print(f"🔍 Token encontrado no banco: {token_db}")
+    
+    print(f"🔍 Token encontrado no banco: {token_db.ect_hash_token}")
 
     if not token_db:
         raise HTTPException(status_code=400, detail="Token inválido ou expirado")
@@ -171,10 +173,12 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     db.commit()
     db.refresh(user)
     print(f"✅ Usuário ativado: verified={user.usr_email_verified}, active={user.usr_user_active}")
+    db.delete(token_db)
+    db.commit()
 
     # Cria JWT e seta cookie (SEM try/except para ver erro real)
     jwt_token = create_access_token({"sub": str(user.usr_id), "email": user.usr_email})
-    print(f"🎫 JWT criado: {jwt_token[:30]}...")
+    print(f"🎫 JWT criado: {jwt_token}")
     
     set_auth_cookie(response, jwt_token)
     print(f"🍪 Cookie setado no response")
@@ -556,6 +560,14 @@ def update_password(body: dict, request: Request,response: Response, db: Session
 def logout(response: Response, token: str = Depends(get_token_from_cookie)):
     token_blacklist.add(token)
     clear_auth_cookie(response)
+    
+    response.delete_cookie(
+        key="registration_sended",
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="none"
+    )
     return {
         "type": "user_logout_success",
         "title": "Logout Successfuly",

@@ -47,7 +47,7 @@ async def send_confirmation_email(email: str, user_name: str, email_token: str):
         html_body = load_template("confirm_account.html", {
             "app_name": app_name,
             "user_name": user_name,
-            "email_token": f'{front_url}/auth/confirm-account/?token={email_token}',
+            "email_token": f'{front_url}/auth/verified-email/?token={email_token}',
             "ect_expires_at": expiration_minutes,
         })
 
