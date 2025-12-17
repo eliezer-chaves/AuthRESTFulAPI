@@ -105,7 +105,7 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
         
         new_token = Token(
             ect_user_id = new_user.usr_id,
-            ect_hash_token = email_token,
+            ect_token = email_token,
             ect_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
         )
@@ -174,7 +174,7 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     token_from_url
 
     # Busca token no banco
-    token_db = db.query(Token).filter(Token.ect_hash_token == token_from_url).first()
+    token_db = db.query(Token).filter(Token.ect_token == token_from_url).first()
 
     if not token_db:
         raise HTTPException(status_code=400, detail="Token inválido ou expirado")
