@@ -1,26 +1,49 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
-from logging_config import logger
-from sqlalchemy.orm import Session
-from database import get_db
-from models.user import User
-from models.email_tokens import Token
-from schemas.user import *
-from core.providers.hash_provider import verify_password, hash_password
-from core.providers.jwt_provider import create_access_token, create_reset_token
-from core.handler.cookie_manager import set_auth_cookie, clear_auth_cookie, get_token_from_cookie
-from core.services.auth_service import token_blacklist
-from core.services.auth_service import get_current_user
-from core.utils.generate_random_code import generate_reset_code
-from datetime import datetime, timedelta, timezone
+# ===== Python standard library =====
 import os
-from core.services.email_service import send_reset_code_email, send_confirmation_email
-from models.password_reset_code import PasswordResetCode
-from core.utils.email_rate_limit import *
+import uuid
 import hmac
 import hashlib
+from datetime import datetime, timedelta, timezone
+
+# ===== Third-party libraries =====
+from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
+from sqlalchemy.orm import Session
+
+# ===== Application infrastructure =====
+from logging_config import logger
+from database import get_db
+
+# ===== Models =====
+from models.user import User
+from models.email_tokens import Token
+from models.password_reset_code import PasswordResetCode
+
+# ===== Schemas =====
+from schemas.user import *
+
+# ===== Providers =====
+from core.providers.hash_provider import verify_password, hash_password
+from core.providers.jwt_provider import create_access_token, create_reset_token
+
+# ===== Handlers =====
+from core.handler.cookie_manager import (
+    set_auth_cookie,
+    clear_auth_cookie,
+    get_token_from_cookie,
+)
+
+# ===== Services =====
+from core.services.auth_service import token_blacklist, get_current_user
+from core.services.email_service import (
+    send_reset_code_email,
+    send_confirmation_email,
+)
+
+# ===== Utils =====
+from core.utils.generate_random_code import generate_reset_code
+from core.utils.generate_email_token import generate_email_token
+from core.utils.email_rate_limit import *
 from core.utils.mask_email import mask_email
-from core.utils.generate_email_token import generate_email_token, make_hash_token, validate_token
-import uuid
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -79,7 +102,6 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
         db.refresh(new_user)
 
         email_token = generate_email_token()
-        #email_token_hash = hash_token(email_token)
         
         new_token = Token(
             ect_user_id = new_user.usr_id,
@@ -92,10 +114,9 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
         
         await send_confirmation_email(new_user.usr_email, new_user.usr_first_name, email_token)
         
-        hash_token = email_token
-        signature = hmac.new(os.getenv("COOKIE_SECRET").encode(), hash_token.encode(), hashlib.sha256).hexdigest()
+        signature = hmac.new(os.getenv("COOKIE_SECRET").encode(), email_token.encode(), hashlib.sha256).hexdigest()
 
-        cookie_value = f"{hash_token}|{signature}"
+        cookie_value = f"{email_token}|{signature}"
 
         response.set_cookie(
             key="registration_sended",
@@ -154,8 +175,6 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
 
     # Busca token no banco
     token_db = db.query(Token).filter(Token.ect_hash_token == token_from_url).first()
-    
-    print(f"🔍 Token encontrado no banco: {token_db.ect_hash_token}")
 
     if not token_db:
         raise HTTPException(status_code=400, detail="Token inválido ou expirado")
