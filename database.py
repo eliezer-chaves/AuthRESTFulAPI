@@ -22,7 +22,7 @@ engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,  # <-- garante que conexões "mortas" sejam reestabelecidas
     pool_recycle=280,  # <-- ajusta para menos que wait_timeout do MySQL
-    echo=True  # <-- desativa o log de SQL para produção
+    echo=False  # <-- desativa o log de SQL para produção
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

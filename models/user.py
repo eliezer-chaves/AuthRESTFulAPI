@@ -18,4 +18,4 @@ class User(Base):
     usr_user_active = Column(Boolean, nullable=False, server_default=text("0"))
     
     usr_reset_codes = relationship(PasswordResetCode, back_populates="usr_user")
-    usr_email_token = relationship(Token, back_populates="ect__user", cascade="all, delete-orphan")
+    usr_email_token = relationship(Token, back_populates="ect_user", cascade="all, delete-orphan", passive_deletes=True)
