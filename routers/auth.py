@@ -36,13 +36,19 @@ def login(payload: UserLogin, response: Response, db: Session = Depends(get_db))
 
         user = db.query(User).filter(User.usr_email == email).first()
 
+        if (user.usr_email_verified == 0 or user.usr_user_active == 0 ):
+            raise HTTPException(status_code=401, detail={
+                "type": "email_not_verified",
+                "title": "Email Not Verified",
+                "message": "Confirm your email before login."
+            })
+        
         if not user or not verify_password(password, user.usr_password):
             raise HTTPException(status_code=401)
 
         token = create_access_token({"sub": str(user.usr_id), "email": user.usr_email})
         set_auth_cookie(response, token)
-        print(token)
-        print(user)
+        
 
         return {"message": "Logged in successfully"}
 
