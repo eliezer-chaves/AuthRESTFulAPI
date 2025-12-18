@@ -45,9 +45,7 @@ from core.utils.generate_email_token import generate_email_token
 from core.utils.email_rate_limit import *
 from core.utils.mask_email import mask_email
 
-
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
 
 @router.post("/login")
 def login(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
@@ -312,22 +310,7 @@ def validate_code(body: dict, response: Response, request: Request, db: Session 
 
 @router.post("/send-reset-code")
 async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session = Depends(get_db)):
-    # Verifica rate limiting ANTES de qualquer outra operação
-    rate_limit_info = await check_rate_limit(payload.usr_email, request, db)
-
-    if rate_limit_info and rate_limit_info.get("blocked"):
-        raise HTTPException(
-            status_code=429,  # Too Many Requests
-            detail={
-                "type": "rate_limit_exceeded",
-                "title": "Too Many Requests",
-                "message": f"You have exceeded the maximum number of email requests. Please try again in {rate_limit_info['remaining_minutes']} minutes.",
-                "blocked_until": rate_limit_info["blocked_until"],
-                "remaining_seconds": rate_limit_info["remaining_seconds"],
-                "remaining_minutes": rate_limit_info["remaining_minutes"],
-                "attempts": rate_limit_info["attempts"]
-            }
-        )
+   
 
     user = db.query(User).filter(User.usr_email == payload.usr_email).first()
 
@@ -381,20 +364,10 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
             "type": "email_code_sent",
             "title": "Code Sent",
             "message": "The recovery code has been sent to your email.",
-            # "data": {
-            #     "email": user.usr_email
-            # }
+          
         }
 
-        # Adiciona informações de rate limit se disponíveis
-        if rate_limit_info and not rate_limit_info.get("blocked"):
-            response["rate_limit"] = {
-                "attempts": rate_limit_info["attempts"],
-                "max_attempts": rate_limit_info["max_attempts"],
-                "remaining_attempts": rate_limit_info["remaining_attempts"]
-            }
-
-        return response
+        
 
     except Exception as e:
         logger.error("error saving reset code: %s", str(e))
