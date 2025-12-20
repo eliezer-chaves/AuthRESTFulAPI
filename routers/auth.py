@@ -6,7 +6,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 # ===== Third-party libraries =====
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 
 # ===== Application infrastructure =====
@@ -30,6 +30,7 @@ from core.handler.cookie_manager import (
     set_auth_cookie,
     clear_auth_cookie,
     get_token_from_cookie,
+    create_cookie_registration_sended
 )
 
 # ===== Services =====
@@ -47,6 +48,23 @@ from core.utils.mask_email import mask_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+
+@router.get("/debug/request-info")
+async def debug_request_info(request: Request):
+    client = request.client
+
+    return {
+        "ip": client.host,
+        "port": client.port,
+        "method": request.method,
+        "url": str(request.url),
+        "path": request.url.path,
+        "query_params": dict(request.query_params),
+        "headers": dict(request.headers),
+        "user_agent": request.headers.get("user-agent"),
+    }
+
+
 @router.post("/login")
 def login(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
     try:
@@ -54,41 +72,163 @@ def login(payload: UserLogin, response: Response, db: Session = Depends(get_db))
         password = payload.usr_password
 
         if not email or not password:
-            raise HTTPException(status_code=400)
+            raise HTTPException(
+                status_code=400,
+               detail={
+                    "type": "missing_credentials",
+                    "title": "Missing credentials",
+                    "message": "Email and password are required."
+                })
 
         user = db.query(User).filter(User.usr_email == email).first()
 
-        if (user.usr_email_verified == 0 or user.usr_user_active == 0):
-            raise HTTPException(status_code=401, detail={
-                "type": "email_not_verified",
-                "title": "Email Not Verified",
-                "message": "Confirm your email before login."
-            })
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "user_not_found",
+                    "title": "Email not found",
+                    "message": "We couldn't find an account with this email address."
+                })
 
-        if not user or not verify_password(password, user.usr_password):
-            raise HTTPException(status_code=401)
+        if user.usr_email_verified == False or user.usr_user_active == False:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "email_not_verified",
+                    "title": "Email Not Verified",
+                    "message": "Please confirm your email before logging in."
+                })
+
+        if not verify_password(password, user.usr_password):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "invalid_credentials",
+                    "title": "Invalid credentials",
+                    "message": "Incorrect email or password."
+                })
 
         token = create_access_token(
-            {"sub": str(user.usr_id), "email": user.usr_email})
+            {
+                "sub": str(user.usr_id), 
+                "email": user.usr_email
+            })
+        
         set_auth_cookie(response, token)
 
-        return {"message": "Logged in successfully"}
-
+        return {
+            "type": "login_success",
+            "title": "Login successful",
+            "message": "You have logged in successfully."
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Error during login: %s", str(e))
-        raise HTTPException(status_code=500)
+        raise HTTPException(status_code=500, detail={
+            "type": "login_error",
+            "title": "Server Error",
+            "message": "An error occurred during login. Please try again later."
+        })
 
 
 @router.post("/signup", status_code=201)
 async def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
     try:
-        exists = db.query(User).filter(
-            User.usr_email == payload.usr_email).first()
-        if exists:
-            raise HTTPException(status_code=409)
+        user_exists = db.query(User).filter(
+            User.usr_email == payload.usr_email and
+            User.usr_email_verified == False and
+            User.usr_user_active == False
+        ).first()
 
+
+        if user_exists and user_exists.usr_email_verified == False and user_exists.usr_user_active == False:
+            user_token = db.query(Token).filter(
+                Token.ect_user_id == user_exists.usr_id
+            ).first()
+
+            if user_token:
+
+                token = db.query(Token).filter(
+                    Token.ect_id == user_token.ect_id
+                ).first()
+
+                expires_at = token.ect_expires_at.replace(tzinfo=timezone.utc)
+
+                if datetime.now(timezone.utc) > expires_at:
+
+                    db.delete(token)
+                    db.commit()
+
+                    email_token = generate_email_token()
+
+                    new_token = Token(
+                        ect_user_id=user_exists.usr_id,
+                        ect_token=email_token,
+                        ect_expires_at=datetime.now(
+                            timezone.utc) + timedelta(minutes=5)
+                    )
+                    db.add(new_token)
+                    db.commit()
+
+                    await send_confirmation_email(user_exists.usr_email, user_exists.usr_first_name, email_token)
+
+                    create_cookie_registration_sended(email_token, response)
+
+                    return {
+                            "type": "new_token_generated",
+                            "title": "New Token",
+                            "message": "Check your mail box to validate your email."
+                        }
+
+                else:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "type": "token_already_exists_valid",
+                            "title": "Token Already Exists",
+                            "message": "Check your mail box to validate your email."
+                        }
+                    )
+                    # Se token não expirado informar que já ta no email
+                    return {
+                        "type": "token_already_exists_valid",
+                        "title": "Token Already Exists",
+                        "message": "Check your mail box to validate your email."
+                    }
+
+            else:
+
+                email_token = generate_email_token()
+
+                new_token = Token(
+                    ect_user_id=user_exists.usr_id,
+                    ect_token=email_token,
+                    ect_expires_at=datetime.now(
+                        timezone.utc) + timedelta(minutes=5)
+                )
+                db.add(new_token)
+                db.commit()
+
+                await send_confirmation_email(user_exists.usr_email, user_exists.usr_first_name, email_token)
+
+                create_cookie_registration_sended(email_token, response)
+
+                return {
+                    "type": "new_token_generated",
+                    "title": "New Token",
+                    "message": "Check your mail box to validate your email."
+                }
+        
+        if user_exists and user_exists.usr_email_verified == True and user_exists.usr_user_active == True:  
+            raise HTTPException(status_code=409, detail={
+                "type": "email_already_registered",
+                "title": "This email is already registered.",
+                "message": "Please try another or sign in.",
+            })
+            
         new_user = User(
             usr_first_name=payload.usr_first_name,
             usr_last_name=payload.usr_last_name,
@@ -107,33 +247,21 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
             ect_user_id=new_user.usr_id,
             ect_token=email_token,
             ect_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5)
-
         )
+
         db.add(new_token)
         db.commit()
 
         await send_confirmation_email(new_user.usr_email, new_user.usr_first_name, email_token)
 
-        signature = hmac.new(os.getenv("COOKIE_SECRET").encode(
-        ), email_token.encode(), hashlib.sha256).hexdigest()
-
-        cookie_value = f"{email_token}|{signature}"
-
-        response.set_cookie(
-            key="registration_sended",
-            value=cookie_value,
-            max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
-            path="/",
-            httponly=True,
-            secure=True,
-            samesite="none"
-        )
+        create_cookie_registration_sended(email_token, response)
 
         return {
             "type": "email_sent",
             "title": "Email Sent",
             "message": "Confirm your email to get access to your account.",
         }
+        
 
     except HTTPException:
         raise
@@ -171,33 +299,46 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     token_from_url = body.get("token")
 
     if not token_from_url:
-        raise HTTPException(status_code=400, detail="Token não fornecido")
-
-    token_from_url
+        raise HTTPException(status_code=410, detail= {
+            "type": "email_sent",
+            "title": "Email Sent",
+            "message": "Confirm your email to get access to your account.",
+        })
 
     # Busca token no banco
     token_db = db.query(Token).filter(
         Token.ect_token == token_from_url).first()
 
     if not token_db:
-        raise HTTPException(
-            status_code=400, detail="Token inválido ou expirado")
+        raise HTTPException(status_code=410, detail={
+            "type": "token_not_found",
+            "title": "Invalid or Expired Link",
+            "message": "This confirmation link is no longer valid. Your email may already be verified. Please try logging in."})
+
 
     # Valida expiração
-    expires_at = token_db.ect_expires_at
+    expires_at=token_db.ect_expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at=expires_at.replace(tzinfo=timezone.utc)
 
     if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Token expirado")
+        raise HTTPException(
+        status_code=410,
+        detail={
+            "type": "email_confirmation_expired",
+            "title": "Confirmation expired",
+            "message": "Your account was not activated in time and has been removed. Please create a new account."
+        }
+    )
+
 
     # Pega o usuário associado
-    user = token_db.ect_user
+    user=token_db.ect_user
     print(f"👤 Usuário: {user.usr_id} - {user.usr_email}")
 
     # Atualiza status do usuário
-    user.usr_email_verified = True
-    user.usr_user_active = True
+    user.usr_email_verified=True
+    user.usr_user_active=True
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -207,7 +348,7 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     db.commit()
 
     # Cria JWT e seta cookie (SEM try/except para ver erro real)
-    jwt_token = create_access_token(
+    jwt_token=create_access_token(
         {"sub": str(user.usr_id), "email": user.usr_email})
     print(f"🎫 JWT criado: {jwt_token}")
 
@@ -221,14 +362,22 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
         secure=True,
         samesite="none"
     )
+    print(response.headers)
+    print(response.body)
+    print(response)
+    return {
+            "type": "user_created",
+            "title": "Welcome!",
+            "message": "Your account was created succesefully."
+        }
     
-    return {"detail": "Conta verificada com sucesso"}
 
 
-@router.post("/validate-code")
-def validate_code(body: dict, response: Response, request: Request, db: Session = Depends(get_db)):
 
-    code = body.get("code")
+@ router.post("/validate-code")
+def validate_code(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
+
+    code=body.get("code")
 
     # Sem código → invalid_or_expired_code
     if not code:
@@ -241,7 +390,7 @@ def validate_code(body: dict, response: Response, request: Request, db: Session 
             }
         )
 
-    reset_code = (
+    reset_code=(
         db.query(PasswordResetCode)
         .filter(PasswordResetCode.psc_code == code)
         .first()
@@ -266,9 +415,9 @@ def validate_code(body: dict, response: Response, request: Request, db: Session 
         )
 
     # Normalizar timezone
-    expires_at = reset_code.psc_expires_at
+    expires_at=reset_code.psc_expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at=expires_at.replace(tzinfo=timezone.utc)
 
     # Código expirado → invalid_or_expired_code
     if expires_at < datetime.now(timezone.utc):
@@ -282,14 +431,14 @@ def validate_code(body: dict, response: Response, request: Request, db: Session 
         )
 
     # Marca como usado
-    reset_code.psc_used_at = datetime.now(timezone.utc)
+    reset_code.psc_used_at=datetime.now(timezone.utc)
     # Get code
-    code = reset_code.psc_code
+    code=reset_code.psc_code
 
-    signature = hmac.new(os.getenv("COOKIE_SECRET").encode(),
+    signature=hmac.new(os.getenv("COOKIE_SECRET").encode(),
                          code.encode(), hashlib.sha256).hexdigest()
 
-    cookie_value = f"{code}|{signature}"
+    cookie_value=f"{code}|{signature}"
 
     response.set_cookie(
         key="code_valid",
@@ -308,11 +457,11 @@ def validate_code(body: dict, response: Response, request: Request, db: Session 
     }
 
 
-@router.post("/send-reset-code")
-async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session = Depends(get_db)):
-   
+@ router.post("/send-reset-code")
+async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
 
-    user = db.query(User).filter(User.usr_email == payload.usr_email).first()
+
+    user=db.query(User).filter(User.usr_email == payload.usr_email).first()
 
     if not user:
         raise HTTPException(
@@ -324,13 +473,13 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
             }
         )
 
-    code = generate_reset_code()
-    expiration_minutes = int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
+    code=generate_reset_code()
+    expiration_minutes=int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
 
     try:
-        reset_id = str(uuid.uuid4())
+        reset_id=str(uuid.uuid4())
 
-        reset_entry = PasswordResetCode(
+        reset_entry=PasswordResetCode(
             psc_user_id=user.usr_id,
             psc_code=code,
             psc_reset_id=reset_id,
@@ -344,11 +493,11 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
 
         await send_reset_code_email(email=user.usr_email, code=code, user_name=user.usr_first_name)
 
-        signature = hmac.new(os.getenv("COOKIE_SECRET").encode(),
+        signature=hmac.new(os.getenv("COOKIE_SECRET").encode(),
                              reset_id.encode(),
                              hashlib.sha256).hexdigest()
 
-        cookie_value = f"{reset_id}|{signature}"
+        cookie_value=f"{reset_id}|{signature}"
 
         response.set_cookie(
             key="mail_sended",
@@ -364,10 +513,10 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
             "type": "email_code_sent",
             "title": "Code Sent",
             "message": "The recovery code has been sent to your email.",
-          
+
         }
 
-        
+
 
     except Exception as e:
         logger.error("error saving reset code: %s", str(e))
@@ -381,22 +530,22 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
         )
 
 
-@router.get("/code-valid")
-def allow_reset_password(request: Request, db: Session = Depends(get_db)):
+@ router.get("/code-valid")
+def allow_reset_password(request: Request, db: Session=Depends(get_db)):
 
-    cookie = request.cookies.get("code_valid")
+    cookie=request.cookies.get("code_valid")
 
     if not cookie:
         raise HTTPException(status_code=403, detail="Reset not authorized")
 
     # 1️⃣ Estrutura do cookie
     try:
-        code, signature = cookie.split("|")
+        code, signature=cookie.split("|")
     except ValueError:
         raise HTTPException(status_code=403, detail="Invalid reset token")
 
     # 2️⃣ Assinatura HMAC
-    expected_signature = hmac.new(
+    expected_signature=hmac.new(
         os.getenv("COOKIE_SECRET").encode(),
         code.encode(),
         hashlib.sha256
@@ -406,7 +555,7 @@ def allow_reset_password(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Invalid reset token")
 
     # 3️⃣ Reset válido no banco
-    reset = (
+    reset=(
         db.query(PasswordResetCode)
         .filter(
             PasswordResetCode.psc_code == code,
@@ -420,7 +569,7 @@ def allow_reset_password(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=403, detail="Reset flow expired or invalid")
 
-    reset.psc_used_at = datetime.now(timezone.utc)
+    reset.psc_used_at=datetime.now(timezone.utc)
     db.commit()
 
     return {
@@ -429,27 +578,27 @@ def allow_reset_password(request: Request, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/has-cookie")
-def check_cookie(request: Request, db: Session = Depends(get_db)):
-    cookie = request.cookies.get("mail_sended")
+@ router.get("/has-cookie")
+def check_cookie(request: Request, db: Session=Depends(get_db)):
+    cookie=request.cookies.get("mail_sended")
 
     if not cookie:
         raise HTTPException(status_code=403, detail={
                             "access": "denied", "message": "not_found"})
 
     try:
-        reset_id, signature = cookie.split("|")
+        reset_id, signature=cookie.split("|")
     except ValueError:
         raise HTTPException(status_code=401)
 
-    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(),
+    expected=hmac.new(os.getenv("COOKIE_SECRET").encode(),
                         reset_id.encode(),
                         hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(signature, expected):
         raise HTTPException(status_code=401)
 
-    reset = (
+    reset=(
         db.query(PasswordResetCode)
         .filter_by(psc_reset_id=reset_id)
         .first())
@@ -459,9 +608,9 @@ def check_cookie(request: Request, db: Session = Depends(get_db)):
             "title": "cookie already used"
         })
 
-    email = reset.usr_user.usr_email
+    email=reset.usr_user.usr_email
 
-    expires_at = reset.psc_expires_at.replace(tzinfo=timezone.utc)
+    expires_at=reset.psc_expires_at.replace(tzinfo=timezone.utc)
 
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401)
@@ -472,10 +621,10 @@ def check_cookie(request: Request, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/update-password")
-def update_password(body: dict, request: Request, response: Response, db: Session = Depends(get_db)):
-    usr_password = body.get("usr_password")
-    usr_password_confirmation = body.get("usr_password_confirmation")
+@ router.post("/update-password")
+def update_password(body: dict, request: Request, response: Response, db: Session=Depends(get_db)):
+    usr_password=body.get("usr_password")
+    usr_password_confirmation=body.get("usr_password_confirmation")
 
     if not usr_password or not usr_password_confirmation:
         raise HTTPException(
@@ -489,7 +638,7 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
             detail="Passwords do not match"
         )
 
-    cookie = request.cookies.get("code_valid")
+    cookie=request.cookies.get("code_valid")
 
     if not cookie:
         raise HTTPException(
@@ -498,12 +647,12 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
         )
 
     try:
-        code, signature = cookie.split("|")
+        code, signature=cookie.split("|")
     except ValueError:
         raise HTTPException(status_code=401)
 
     # 3️⃣ Valida assinatura do cookie
-    expected = hmac.new(
+    expected=hmac.new(
         os.getenv("COOKIE_SECRET").encode(),
         code.encode(),
         hashlib.sha256
@@ -513,7 +662,7 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
         raise HTTPException(status_code=401)
 
     # 4️⃣ Busca reset (NÃO filtra por used_at)
-    reset = (
+    reset=(
         db.query(PasswordResetCode)
         .filter(PasswordResetCode.psc_code == code)
         .first()
@@ -526,10 +675,10 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
         )
 
     # 5️⃣ Expiração
-    expires_at = reset.psc_expires_at
+    expires_at=reset.psc_expires_at
 
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at=expires_at.replace(tzinfo=timezone.utc)
 
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(
@@ -537,7 +686,7 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
             detail="Reset expired"
         )
 
-    user = (
+    user=(
         db.query(User)
         .filter(User.usr_id == reset.psc_user_id)
         .first()
@@ -549,9 +698,9 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
             detail="User not found"
         )
 
-    user.usr_password = hash_password(usr_password)
+    user.usr_password=hash_password(usr_password)
 
-    reset.psc_used_at = datetime.now(timezone.utc)
+    reset.psc_used_at=datetime.now(timezone.utc)
 
     db.commit()
 
@@ -570,20 +719,20 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
         secure=True,
         samesite="none"
     )
-        
+
     return {
         "type": "password_updated",
         "title": "Password updated",
         "message": "Your password has been updated successfully."
     }
 
-@router.post("/logout", status_code=204)
-def logout(response: Response, token: str = Depends(get_token_from_cookie)):
+@ router.post("/logout", status_code=204)
+def logout(response: Response, token: str=Depends(get_token_from_cookie)):
     token_blacklist.add(token)
     clear_auth_cookie(response)
 
     delete_all_cookies(response)
-    
+
     return {
         "type": "user_logout_success",
         "title": "Logout Successfuly",
@@ -591,8 +740,8 @@ def logout(response: Response, token: str = Depends(get_token_from_cookie)):
     }
 
 
-@router.get("/me", response_model=UserResponse)
-def get_current_user_info(current_user: User = Depends(get_current_user)):
+@ router.get("/me", response_model=UserResponse)
+def get_current_user_info(current_user: User=Depends(get_current_user)):
     return current_user
 
 
@@ -604,7 +753,7 @@ def delete_all_cookies(response: Response):
         secure=True,
         samesite="none"
     )
-    
+
     response.delete_cookie(
         key="code_valid",
         path="/",
@@ -620,5 +769,3 @@ def delete_all_cookies(response: Response):
         secure=True,
         samesite="none"
     )
-    
-    
