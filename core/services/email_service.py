@@ -11,7 +11,7 @@ front_url = os.getenv("FRONT_URL")
 api_url = os.getenv("API_URL")
 
 app_name = os.getenv("APP_NAME")
-expiration_minutes = int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
+expiration_minutes = int(os.getenv("SHORT_LIVED_TTL_MINUTES"))
 
 async def send_reset_code_email(email: str, code: str, user_name: str):
     try:

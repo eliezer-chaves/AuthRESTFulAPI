@@ -23,14 +23,20 @@ from schemas.user import *
 
 # ===== Providers =====
 from core.providers.hash_provider import verify_password, hash_password
-from core.providers.jwt_provider import create_access_token, create_reset_token
+from core.providers.jwt_provider import create_access_token
 
 # ===== Handlers =====
 from core.handler.cookie_manager import (
     set_auth_cookie,
     clear_auth_cookie,
     get_token_from_cookie,
-    create_cookie_registration_sended
+    create_cookie_registration_sended,
+    create_cookie_code_valid,
+    create_cookie_email_sended,
+    clear_cookie_email_sended,
+    clear_cookie_code_valid, 
+    clear_cookie_registration_sended,
+    delete_all_cookies
 )
 
 # ===== Services =====
@@ -167,8 +173,7 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
                     new_token = Token(
                         ect_user_id=user_exists.usr_id,
                         ect_token=email_token,
-                        ect_expires_at=datetime.now(
-                            timezone.utc) + timedelta(minutes=5)
+                        ect_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5)
                     )
                     db.add(new_token)
                     db.commit()
@@ -192,12 +197,6 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
                             "message": "Check your mail box to validate your email."
                         }
                     )
-                    # Se token não expirado informar que já ta no email
-                    return {
-                        "type": "token_already_exists_valid",
-                        "title": "Token Already Exists",
-                        "message": "Check your mail box to validate your email."
-                    }
 
             else:
 
@@ -275,16 +274,14 @@ def check_cookie(request: Request, db: Session = Depends(get_db)):
     cookie = request.cookies.get("registration_sended")
 
     if not cookie:
-        raise HTTPException(status_code=403, detail={
-                            "access": "denied", "message": "not_found"})
+        raise HTTPException(status_code=403, detail={"access": "denied", "message": "not_found"})
 
     try:
         hashed_token, signature = cookie.split("|")
     except ValueError:
         raise HTTPException(status_code=401)
 
-    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(),
-                        hashed_token.encode(), hashlib.sha256).hexdigest()
+    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(), hashed_token.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(signature, expected):
         raise HTTPException(status_code=401)
@@ -355,16 +352,8 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     set_auth_cookie(response, jwt_token)
     print(f"🍪 Cookie setado no response")
 
-    response.delete_cookie(
-        key="registration_sended",
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
-    print(response.headers)
-    print(response.body)
-    print(response)
+    clear_cookie_registration_sended(response)
+    
     return {
             "type": "user_created",
             "title": "Welcome!",
@@ -434,21 +423,8 @@ def validate_code(body: dict, response: Response, request: Request, db: Session=
     reset_code.psc_used_at=datetime.now(timezone.utc)
     # Get code
     code=reset_code.psc_code
-
-    signature=hmac.new(os.getenv("COOKIE_SECRET").encode(),
-                         code.encode(), hashlib.sha256).hexdigest()
-
-    cookie_value=f"{code}|{signature}"
-
-    response.set_cookie(
-        key="code_valid",
-        value=cookie_value,
-        max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
+   
+    create_cookie_code_valid(code, response)
 
     return {
         "type": "password_reset_code_verified",
@@ -493,30 +469,14 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
 
         await send_reset_code_email(email=user.usr_email, code=code, user_name=user.usr_first_name)
 
-        signature=hmac.new(os.getenv("COOKIE_SECRET").encode(),
-                             reset_id.encode(),
-                             hashlib.sha256).hexdigest()
-
-        cookie_value=f"{reset_id}|{signature}"
-
-        response.set_cookie(
-            key="mail_sended",
-            value=cookie_value,
-            max_age=int(os.getenv("COOKIE_EXPIRRATION_TIME")),
-            path="/",
-            httponly=True,
-            secure=True,
-            samesite="none"
-        )
-
+        create_cookie_email_sended(reset_id, response)
+        
         return {
             "type": "email_code_sent",
             "title": "Code Sent",
             "message": "The recovery code has been sent to your email.",
 
         }
-
-
 
     except Exception as e:
         logger.error("error saving reset code: %s", str(e))
@@ -704,21 +664,8 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
 
     db.commit()
 
-    response.delete_cookie(
-        key="code_valid",
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
-
-    response.delete_cookie(
-        key="mail_sended",
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
+    clear_cookie_email_sended(response)
+    clear_cookie_code_valid(response)
 
     return {
         "type": "password_updated",
@@ -745,27 +692,3 @@ def get_current_user_info(current_user: User=Depends(get_current_user)):
     return current_user
 
 
-def delete_all_cookies(response: Response):
-    response.delete_cookie(
-        key="registration_sended",
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
-
-    response.delete_cookie(
-        key="code_valid",
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
-
-    response.delete_cookie(
-        key="mail_sended",
-        path="/",
-        httponly=True,
-        secure=True,
-        samesite="none"
-    )
