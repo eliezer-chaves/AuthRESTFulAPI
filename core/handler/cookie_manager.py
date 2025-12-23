@@ -139,3 +139,16 @@ def clear_cookie_code_valid(response: Response):
 def delete_all_cookies(response: Response):
     for cfg in ALL_COOKIE_CONFIGS:
         _clear_cookie(response, cfg)
+
+class CookieReader:
+    @staticmethod
+    def get_cookie_registration_email_sended(resquest: Request) -> str | None:
+        return resquest.cookies.get(COOKIE_REGISTRATION_SENDED_CONFIG["key"])
+    
+    @staticmethod
+    def get_cookie_email_code_valid(request: Request) -> str | None:
+        return request.cookies.get(COOKIE_CODE_VALID_CONFIG["key"])
+    
+    @staticmethod
+    def get_cookie_email_sended_to_reset_password(request: Request) -> str | None:
+        return request.cookies.get(COOKIE_EMAIL_SENDED_CONFIG["key"])

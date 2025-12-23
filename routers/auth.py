@@ -36,7 +36,8 @@ from core.handler.cookie_manager import (
     clear_cookie_email_sended,
     clear_cookie_code_valid, 
     clear_cookie_registration_sended,
-    delete_all_cookies
+    delete_all_cookies,
+    CookieReader
 )
 
 # ===== Services =====
@@ -271,8 +272,9 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
 
 @router.get("/has-cookie-registration")
 def check_cookie(request: Request, db: Session = Depends(get_db)):
-    cookie = request.cookies.get("registration_sended")
-
+    
+    cookie = CookieReader.get_cookie_registration_email_sended(request)
+    
     if not cookie:
         raise HTTPException(status_code=403, detail={"access": "denied", "message": "not_found"})
 
@@ -328,10 +330,8 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
         }
     )
 
-
     # Pega o usuário associado
     user=token_db.ect_user
-    print(f"👤 Usuário: {user.usr_id} - {user.usr_email}")
 
     # Atualiza status do usuário
     user.usr_email_verified=True
@@ -339,18 +339,17 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     db.add(user)
     db.commit()
     db.refresh(user)
-    print(
-        f"✅ Usuário ativado: verified={user.usr_email_verified}, active={user.usr_user_active}")
+    
     db.delete(token_db)
     db.commit()
 
     # Cria JWT e seta cookie (SEM try/except para ver erro real)
     jwt_token=create_access_token(
         {"sub": str(user.usr_id), "email": user.usr_email})
-    print(f"🎫 JWT criado: {jwt_token}")
+   
 
     set_auth_cookie(response, jwt_token)
-    print(f"🍪 Cookie setado no response")
+    
 
     clear_cookie_registration_sended(response)
     
@@ -360,8 +359,6 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
             "message": "Your account was created succesefully."
         }
     
-
-
 
 @ router.post("/validate-code")
 def validate_code(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
@@ -450,7 +447,7 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
         )
 
     code=generate_reset_code()
-    expiration_minutes=int(os.getenv("MAIL_EXPIRATION_CODE_MINUTRES"))
+    expiration_minutes=int(os.getenv("SHORT_LIVED_TTL_MINUTES"))
 
     try:
         reset_id=str(uuid.uuid4())
@@ -493,8 +490,9 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
 @ router.get("/code-valid")
 def allow_reset_password(request: Request, db: Session=Depends(get_db)):
 
-    cookie=request.cookies.get("code_valid")
-
+    #cookie=request.cookies.get("code_valid")
+    cookie = CookieReader.get_cookie_email_code_valid(request)
+    
     if not cookie:
         raise HTTPException(status_code=403, detail="Reset not authorized")
 
@@ -540,11 +538,11 @@ def allow_reset_password(request: Request, db: Session=Depends(get_db)):
 
 @ router.get("/has-cookie")
 def check_cookie(request: Request, db: Session=Depends(get_db)):
-    cookie=request.cookies.get("mail_sended")
+    #cookie=request.cookies.get("mail_sended")
+    cookie = CookieReader.get_cookie_email_sended_to_reset_password(request)
 
     if not cookie:
-        raise HTTPException(status_code=403, detail={
-                            "access": "denied", "message": "not_found"})
+        raise HTTPException(status_code=403, detail={ "access": "denied", "message": "not_found"})
 
     try:
         reset_id, signature=cookie.split("|")
@@ -598,7 +596,8 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
             detail="Passwords do not match"
         )
 
-    cookie=request.cookies.get("code_valid")
+    #cookie=request.cookies.get("code_valid")
+    cookie = CookieReader.get_cookie_email_code_valid(request)
 
     if not cookie:
         raise HTTPException(
