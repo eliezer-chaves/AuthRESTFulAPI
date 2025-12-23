@@ -46,6 +46,7 @@ from core.services.email_service import (
     send_reset_code_email,
     send_confirmation_email,
 )
+from core.services import auth_service
 
 # ===== Utils =====
 from core.utils.generate_random_code import generate_reset_code
@@ -54,7 +55,6 @@ from core.utils.email_rate_limit import *
 from core.utils.mask_email import mask_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
 
 @router.get("/debug/request-info")
 async def debug_request_info(request: Request):
@@ -72,73 +72,24 @@ async def debug_request_info(request: Request):
     }
 
 
-@router.post("/login")
-def login(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
-    try:
-        email = payload.usr_email
-        password = payload.usr_password
+# @router.post("/login")
+# def create_session(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
+#     try:
+#         auth_service.login(payload, response, db)
 
-        if not email or not password:
-            raise HTTPException(
-                status_code=400,
-               detail={
-                    "type": "missing_credentials",
-                    "title": "Missing credentials",
-                    "message": "Email and password are required."
-                })
+#         return {
+#             "type": "login_success",
+#             "title": "Login successful",
+#             "message": "You have logged in successfully."
+#         }
 
-        user = db.query(User).filter(User.usr_email == email).first()
-
-        if not user:
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "type": "user_not_found",
-                    "title": "Email not found",
-                    "message": "We couldn't find an account with this email address."
-                })
-
-        if user.usr_email_verified == False or user.usr_user_active == False:
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "type": "email_not_verified",
-                    "title": "Email Not Verified",
-                    "message": "Please confirm your email before logging in."
-                })
-
-        if not verify_password(password, user.usr_password):
-            raise HTTPException(
-                status_code=401,
-                detail={
-                    "type": "invalid_credentials",
-                    "title": "Invalid credentials",
-                    "message": "Incorrect email or password."
-                })
-
-        token = create_access_token(
-            {
-                "sub": str(user.usr_id), 
-                "email": user.usr_email
-            })
-        
-        set_auth_cookie(response, token)
-
-        return {
-            "type": "login_success",
-            "title": "Login successful",
-            "message": "You have logged in successfully."
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error during login: %s", str(e))
-        raise HTTPException(status_code=500, detail={
-            "type": "login_error",
-            "title": "Server Error",
-            "message": "An error occurred during login. Please try again later."
-        })
+#     except Exception as e:
+#         logger.error("Error during login: %s", str(e))
+#         raise HTTPException(status_code=500, detail={
+#             "type": "login_error",
+#             "title": "Server Error",
+#             "message": "An error occurred during login. Please try again later."
+#         })
 
 
 @router.post("/signup", status_code=201)

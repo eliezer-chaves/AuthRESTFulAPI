@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import users, auth
+from routers import users, auth, sessions
 from logging_config import logger
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +20,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-
 origins = os.getenv("CORS_ORIGINS")
 origins = [origin.strip() for origin in origins.split(",")]
 
@@ -36,4 +35,7 @@ app.add_middleware(
 # Registra routers
 app.include_router(users.router)
 app.include_router(auth.router)
+
+app.include_router(sessions.router)
+
 
