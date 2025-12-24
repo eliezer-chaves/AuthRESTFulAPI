@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="BaseAPI",
-    description="API RESTful com autenticação JWT. Toda gerencia de autenticação está aqui",
+    description="API RESTful com autenticação JWT.",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -31,10 +31,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"], 
 )
-
-# Registra routers
-app.include_router(users.router)
-
 
 app.include_router(sessions.router)
 app.include_router(accounts.router)
