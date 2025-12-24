@@ -190,7 +190,7 @@ def validate_code(body: dict, response: Response, request: Request, db: Session=
     }
 
 
-@ router.post("/authorization")
+@ router.get("/authorization")
 def allow_reset_password(request: Request, db: Session=Depends(get_db)):
 
     #cookie=request.cookies.get("code_valid")

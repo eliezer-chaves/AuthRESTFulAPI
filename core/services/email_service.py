@@ -4,7 +4,7 @@ from core.utils.template_renderer import load_template
 import os
 from logging_config import logger
 from fastapi_mail.errors import ConnectionErrors
-
+from datetime import date
 fastmail = FastMail(mail_config)
 
 front_url = os.getenv("FRONT_URL")
@@ -12,6 +12,8 @@ api_url = os.getenv("API_URL")
 
 app_name = os.getenv("APP_NAME")
 expiration_minutes = int(os.getenv("SHORT_LIVED_TTL_MINUTES"))
+today = date.today()
+current_year = today.year
 
 async def send_reset_code_email(email: str, code: str, user_name: str):
     try:
@@ -20,7 +22,7 @@ async def send_reset_code_email(email: str, code: str, user_name: str):
             "user_name": user_name,
             "reset_code": code,
             "expiration_minutes": expiration_minutes,
-            "current_year": 2025
+            "current_year": current_year
         })
 
         message = MessageSchema(
@@ -49,6 +51,8 @@ async def send_confirmation_email(email: str, user_name: str, email_token: str):
             "user_name": user_name,
             "email_token": f'{front_url}/auth/verified-email/?token={email_token}',
             "ect_expires_at": expiration_minutes,
+            "current_year": current_year
+
         })
 
         message = MessageSchema(
