@@ -64,7 +64,7 @@ router = APIRouter(
 
 
 @ router.post("")
-async def send_reset_code(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
+async def request_password_reset(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
 
 
     user=db.query(User).filter(User.usr_email == payload.usr_email).first()
@@ -121,7 +121,7 @@ async def send_reset_code(payload: UserEmail, response: Response, request: Reque
 
 
 @ router.post("/verification")
-def validate_code(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
+def verify_reset_code(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
 
     code=body.get("code")
 
@@ -191,7 +191,7 @@ def validate_code(body: dict, response: Response, request: Request, db: Session=
 
 
 @ router.get("/authorization")
-def allow_reset_password(request: Request, db: Session=Depends(get_db)):
+def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
 
     #cookie=request.cookies.get("code_valid")
     cookie = CookieReader.get_cookie_email_code_valid(request)
@@ -240,7 +240,7 @@ def allow_reset_password(request: Request, db: Session=Depends(get_db)):
 
 
 @ router.get("/status")
-def check_cookie(request: Request, db: Session=Depends(get_db)):
+def get_password_reset_status(request: Request, db: Session=Depends(get_db)):
    
     cookie = CookieReader.get_cookie_email_sended_to_reset_password(request)
 

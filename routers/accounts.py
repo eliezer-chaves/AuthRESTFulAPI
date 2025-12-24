@@ -259,7 +259,7 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     
 
 @router.get("/verification/status")
-def check_cookie(request: Request, db: Session = Depends(get_db)):
+def check_email_status(request: Request, db: Session = Depends(get_db)):
     
     cookie = CookieReader.get_cookie_registration_email_sended(request)
     
