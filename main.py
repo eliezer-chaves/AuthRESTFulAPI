@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import users, auth, sessions, accounts, password_resets
+from routers import sessions, accounts, password_resets
 from logging_config import logger
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
