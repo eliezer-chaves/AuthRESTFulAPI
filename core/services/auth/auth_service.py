@@ -1,69 +1,136 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
-# ===== Python standard library =====
 import os
-import uuid
 import hmac
 import hashlib
 from datetime import datetime, timedelta, timezone
-
-# ===== Third-party libraries =====
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
-from sqlalchemy.orm import Session
-
-# ===== Application infrastructure =====
 from logging_config import logger
 from database import get_db
-
-# ===== Models =====
-from models.user import User
-from models.email_tokens import Token
-from models.password_reset_code import PasswordResetCode
-
-# ===== Schemas =====
-from schemas.user import *
-
-# ===== Providers =====
+from models.auth_models.user_model import User
+from models.auth_models.email_tokens_model import Token
+from schemas.user_schema import *
 from core.providers.hash_provider import verify_password, hash_password
-from core.providers.jwt_provider import create_access_token
-
-# ===== Handlers =====
+from core.providers.jwt_provider import create_access_token, decode_access_token
 from core.handler.cookie_manager import (
     set_auth_cookie,
-    clear_auth_cookie,
     get_token_from_cookie,
     create_cookie_registration_sended,
-    create_cookie_code_valid,
-    create_cookie_email_sended,
-    clear_cookie_email_sended,
-    clear_cookie_code_valid, 
     clear_cookie_registration_sended,
-    delete_all_cookies,
     CookieReader
 )
+from core.services.email_service import send_confirmation_email
+from core.utils.email_utils import *
 
-# ===== Services =====
-from core.services.auth_service import token_blacklist, get_current_user
-from core.services.email_service import (
-    send_reset_code_email,
-    send_confirmation_email,
-)
-from core.services import auth_service
+token_blacklist = set()
 
-# ===== Utils =====
-from core.utils.generate_random_code import generate_reset_code
-from core.utils.generate_email_token import generate_email_token
-from core.utils.email_rate_limit import *
-from core.utils.mask_email import mask_email
+def get_current_user(token: str = Depends(get_token_from_cookie), db: Session = Depends(get_db)) -> User:
 
+    if token in token_blacklist:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_or_expired_token",
+                "title": "Invalid or Expired Token",
+                "message": "The provided authentication token is invalid or has expired."
+            }
+        )
+        
+    payload = decode_access_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_token",
+                "title": "Invalid Token",
+                "message": "The authentication token provided is not valid."
+            }
+        )
+    
+    user_id = payload.get("sub")
+    
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_token_payload",
+                "title": "Invalid Token Payload",
+                "message": "The token payload is missing required user information."
+            }
+        )
 
-router = APIRouter(
-    prefix="/accounts",
-    tags=["Accounts"]
-)
+    user = db.query(User).filter(User.usr_id == int(user_id)).first()
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "user_not_found",
+                "title": "User Not Found",
+                "message": "No user exists for the authentication token provided."
+            }
+        )
+        
+    return user
 
-@router.post("", status_code=201)
+def login(payload: UserLogin, response: Response, db):
+    
+    email = payload.usr_email
+    password = payload.usr_password
+    
+    if not email or not password:
+        raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "missing_credentials",
+            "title": "Missing credentials",
+            "message": "Email and password are required."
+        })
+
+    user = db.query(User).filter(User.usr_email == email).first()
+
+    if not user:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "user_not_found",
+                    "title": "Email not found",
+                    "message": "We couldn't find an account with this email address."
+                })
+
+    if user.usr_email_verified == False or user.usr_user_active == False:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "email_not_verified",
+                    "title": "Email Not Verified",
+                    "message": "Please confirm your email before logging in."
+                })
+
+    if not verify_password(password, user.usr_password):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "invalid_credentials",
+                    "title": "Invalid credentials",
+                    "message": "Incorrect email or password."
+                })
+
+    token = create_access_token(
+            {
+                "sub": str(user.usr_id), 
+                "email": user.usr_email
+            })
+        
+    set_auth_cookie(response, token)
+    
+    return {
+            "type": "login_success",
+            "title": "Login successful",
+            "message": "You have logged in successfully."
+        }
+    
 async def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
+        
     try:
         user_exists = db.query(User).filter(
             User.usr_email == payload.usr_email and
@@ -182,16 +249,11 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
             "title": "Email Sent",
             "message": "Confirm your email to get access to your account.",
         }
-        
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Unexpected error creating user: %s", str(e))
         raise HTTPException(status_code=500)
 
-
-@router.post("/verification")
 def validate_account(body: dict, response: Response, db: Session = Depends(get_db)):
     token_from_url = body.get("token")
 
@@ -257,10 +319,7 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
             "message": "Your account was created succesefully."
         }
     
-
-@router.get("/verification/status")
 def check_email_status(request: Request, db: Session = Depends(get_db)):
-    
     cookie = CookieReader.get_cookie_registration_email_sended(request)
     
     if not cookie:
@@ -279,4 +338,5 @@ def check_email_status(request: Request, db: Session = Depends(get_db)):
     return {
         "email": "email sended",
     }
-
+    
+    

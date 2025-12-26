@@ -1,10 +1,11 @@
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from core.config.email_config import mail_config
-from core.utils.template_renderer import load_template
+from core.utils.email_utils import *
 import os
 from logging_config import logger
 from fastapi_mail.errors import ConnectionErrors
 from datetime import date
+
 fastmail = FastMail(mail_config)
 
 front_url = os.getenv("FRONT_URL")

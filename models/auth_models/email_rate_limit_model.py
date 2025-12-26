@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, TIMESTAMP
+from sqlalchemy import Column, Integer, String, TIMESTAMP
 from database import Base
 
 class EmailRateLimit(Base):

@@ -1,72 +1,28 @@
-from fastapi import APIRouter, Depends, Response
-from sqlalchemy.orm import Session
-# ===== Python standard library =====
 import os
 import uuid
 import hmac
 import hashlib
 from datetime import datetime, timedelta, timezone
-
-# ===== Third-party libraries =====
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+from fastapi import Depends, Response, Request, HTTPException
 from sqlalchemy.orm import Session
-
-# ===== Application infrastructure =====
-from logging_config import logger
 from database import get_db
-
-# ===== Models =====
-from models.user import User
-from models.email_tokens import Token
-from models.password_reset_code import PasswordResetCode
-
-# ===== Schemas =====
-from schemas.user import *
-
-# ===== Providers =====
-from core.providers.hash_provider import verify_password, hash_password
-from core.providers.jwt_provider import create_access_token
-
-# ===== Handlers =====
+from logging_config import logger
+from models.auth_models.user_model import User
+from models.auth_models.password_reset_code_model import PasswordResetCode
+from schemas.user_schema import UserEmail
+from core.providers.hash_provider import hash_password
 from core.handler.cookie_manager import (
-    set_auth_cookie,
-    clear_auth_cookie,
-    get_token_from_cookie,
-    create_cookie_registration_sended,
-    create_cookie_code_valid,
     create_cookie_email_sended,
+    create_cookie_code_valid,
     clear_cookie_email_sended,
-    clear_cookie_code_valid, 
-    clear_cookie_registration_sended,
-    delete_all_cookies,
-    CookieReader
+    clear_cookie_code_valid,
+    CookieReader,
 )
-
-# ===== Services =====
-from core.services.auth_service import token_blacklist, get_current_user
-from core.services.email_service import (
-    send_reset_code_email,
-    send_confirmation_email,
-)
-from core.services import auth_service
-
-# ===== Utils =====
-from core.utils.generate_random_code import generate_reset_code
-from core.utils.generate_email_token import generate_email_token
-from core.utils.email_rate_limit import *
-from core.utils.mask_email import mask_email
+from core.services.email_service import send_reset_code_email
+from core.utils.email_utils import generate_reset_code, mask_email
 
 
-router = APIRouter(
-    prefix="/password-resets",
-    tags=["Password Reset Flow"]
-)
-
-
-@ router.post("")
 async def request_password_reset(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
-
-
     user=db.query(User).filter(User.usr_email == payload.usr_email).first()
 
     if not user:
@@ -119,8 +75,6 @@ async def request_password_reset(payload: UserEmail, response: Response, request
             }
         )
 
-
-@ router.post("/verification")
 def verify_reset_code(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
 
     code=body.get("code")
@@ -189,11 +143,8 @@ def verify_reset_code(body: dict, response: Response, request: Request, db: Sess
         "message": "The verification code is valid."
     }
 
-
-@ router.get("/authorization")
 def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
 
-    #cookie=request.cookies.get("code_valid")
     cookie = CookieReader.get_cookie_email_code_valid(request)
     
     if not cookie:
@@ -238,8 +189,6 @@ def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
         "expires_at": reset.psc_expires_at
     }
 
-
-@ router.get("/status")
 def get_password_reset_status(request: Request, db: Session=Depends(get_db)):
    
     cookie = CookieReader.get_cookie_email_sended_to_reset_password(request)
@@ -281,8 +230,6 @@ def get_password_reset_status(request: Request, db: Session=Depends(get_db)):
         "expires_at": expires_at
     }
 
-
-@ router.patch("")
 def update_password(body: dict, request: Request, response: Response, db: Session=Depends(get_db)):
     usr_password=body.get("usr_password")
     usr_password_confirmation=body.get("usr_password_confirmation")

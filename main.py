@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import sessions, accounts, password_resets
+from routers.auth import accounts_router, password_resets_router, sessions_router
 from logging_config import logger
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +32,7 @@ app.add_middleware(
     expose_headers=["*"], 
 )
 
-app.include_router(sessions.router)
-app.include_router(accounts.router)
-app.include_router(password_resets.router)
+app.include_router(sessions_router.router)
+app.include_router(accounts_router.router)
+app.include_router(password_resets_router.router)
 

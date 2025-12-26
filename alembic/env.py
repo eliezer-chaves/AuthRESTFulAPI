@@ -4,7 +4,6 @@ from sqlalchemy import create_engine, pool
 from alembic import context
 from database import Base  # seu Base do SQLAlchemy
 from dotenv import load_dotenv
-import models
 
 load_dotenv()  # carrega variáveis do .env
 

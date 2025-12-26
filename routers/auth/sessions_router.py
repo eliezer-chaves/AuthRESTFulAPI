@@ -1,13 +1,11 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Request
 from sqlalchemy.orm import Session
-from logging_config import logger
 from database import get_db
-from models.user import User
-from schemas.user import UserLogin, UserResponse
-from core.services import auth_service
+from models.auth_models.user_model import User
+from schemas.user_schema import UserLogin, UserResponse
+from core.services.auth import auth_service
 from core.handler.cookie_manager import get_token_from_cookie
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
-from core.services.auth_service import token_blacklist, get_current_user
+from core.services.auth.auth_service import token_blacklist, get_current_user
 from core.handler.cookie_manager import (
     clear_auth_cookie,
     get_token_from_cookie,
@@ -21,19 +19,11 @@ router = APIRouter(
 
 @router.post("")
 def create_session(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
-  
-        auth_service.login(payload, response, db)
-
-        # return {
-        #     "type": "login_success",
-        #     "title": "Login successful",
-        #     "message": "You have logged in successfully."
-        # }
+    auth_service.login(payload, response, db)
 
 
 @ router.delete("/current", status_code=204)
 def delete_session(response: Response, token: str=Depends(get_token_from_cookie)):
-    print("aqui")
     token_blacklist.add(token)
     clear_auth_cookie(response)
     delete_all_cookies(response)    

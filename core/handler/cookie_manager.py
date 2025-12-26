@@ -1,7 +1,7 @@
 import os
 import hmac
 import hashlib
-from fastapi import Response, Request, HTTPException, status
+from fastapi import Response, Request, HTTPException
 
 # =========================
 # Base config

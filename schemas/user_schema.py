@@ -1,7 +1,6 @@
 # schemas/user.py
 from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict
 from typing import Annotated, Optional
-from datetime import datetime
 
 # Tipos validados
 PasswordStr = Annotated[str, Field(min_length=8)]

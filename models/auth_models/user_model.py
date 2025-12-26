@@ -1,8 +1,8 @@
 from sqlalchemy import Column, Integer, String, Boolean, text
 from database import Base
 from sqlalchemy.orm import relationship
-from models.password_reset_code import PasswordResetCode
-from models.email_tokens import Token
+from models.auth_models.password_reset_code_model import PasswordResetCode
+from models.auth_models.email_tokens_model import Token
 
 
 class User(Base):
