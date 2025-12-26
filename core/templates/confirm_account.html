@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Confirm Your Email</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f6fa;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 480px;
+            margin: auto;
+            background: #ffffff;
+            padding: 24px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .button {
+            display: inline-block;
+            margin: 16px 0;
+            padding: 12px 18px;
+            background: #2563eb;
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .token {
+            font-size: 12px;
+            font-family: monospace;
+            word-break: break-all;
+            background: #f3f4f6;
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+        .footer {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #6b7280;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <p>Hello {{user_name}},</p>
+
+        <p>Welcome to {{app_name}}! Please confirm your email address to activate your account.</p>
+
+        <p>
+            <a class="button" href="{{email_token}}">
+                Confirm Email
+            </a>
+        </p>
+
+        <p>This confirmation link expires in <strong>{{ect_expires_at}} minutes</strong></p>
+
+        <p>If the button doesn’t work, copy and paste this link into your browser:</p>
+
+        <div class="token">
+            {{email_token}}
+        </div>
+
+        <p>If you did not create an account, you can safely ignore this email.</p>
+
+        <p class="footer">
+            © {{current_year}} {{app_name}}
+        </p>
+    </div>
+</body>
+</html>
