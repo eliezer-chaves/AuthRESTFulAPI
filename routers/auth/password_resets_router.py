@@ -11,23 +11,23 @@ router = APIRouter(
 
 
 @ router.post("")
-async def request_password_reset(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
-    password_reset_service.request_password_reset(payload, response, db)
+async def request_password_reset_route(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
+   return await password_reset_service.request_password_reset(payload, response, request, db)
 
 @ router.post("/verification")
-def verify_reset_code(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
-    password_reset_service.verify_reset_code(body, response, request, db)
+def verify_reset_code_route(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
+    return password_reset_service.verify_reset_code(body, response, request, db)
 
 
 @ router.get("/authorization")
-def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
-    password_reset_service.authorize_password_reset(request, db)
+def authorize_password_reset_route(request: Request, db: Session=Depends(get_db)):
+    return password_reset_service.authorize_password_reset(request, db)
 
 @ router.get("/status")
-def get_password_reset_status(request: Request, db: Session=Depends(get_db)):
-    password_reset_service.get_password_reset_status(request, db)
+def get_password_reset_status_route(request: Request, db: Session=Depends(get_db)):
+    return password_reset_service.get_password_reset_status(request, db)
 
 @ router.patch("")
-def update_password(body: dict, request: Request, response: Response, db: Session=Depends(get_db)):
-    password_reset_service.update_password(body, request, db, response)
+def update_password_route(body: dict, request: Request, response: Response, db: Session=Depends(get_db)):
+    return password_reset_service.update_password(body, request, response, db)
     

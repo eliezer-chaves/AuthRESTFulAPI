@@ -10,20 +10,16 @@ router = APIRouter(
 )
 
 @router.post("", status_code=201)
-def create_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
-    
-    auth_service.create_user(payload, response, db)
-    
+async def create_user_route(payload: UserCreate, response: Response, db: Session = Depends(get_db)):
+    return await auth_service.create_user(payload, response, db)
 
 @router.post("/verification")
-def validate_account(body: dict, response: Response, db: Session = Depends(get_db)):
-    auth_service.validate_account(body, response, db)
+def validate_account_route(body: dict, response: Response, db: Session = Depends(get_db)):
+   return auth_service.validate_account(body, response, db)
     
-    
-
 @router.get("/verification/status")
-def check_email_status(request: Request, db: Session = Depends(get_db)):
-    auth_service.check_email_status(request, db)
+def check_email_status_route(request: Request, db: Session = Depends(get_db)):
+    return auth_service.check_email_status(request, db)
     
     
 

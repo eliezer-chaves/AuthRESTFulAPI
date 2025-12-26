@@ -246,7 +246,6 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
             detail="Passwords do not match"
         )
 
-    #cookie=request.cookies.get("code_valid")
     cookie = CookieReader.get_cookie_email_code_valid(request)
 
     if not cookie:
