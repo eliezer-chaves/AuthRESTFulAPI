@@ -3,6 +3,7 @@ from database import Base
 from sqlalchemy.orm import relationship
 from models.auth_models.password_reset_code_model import PasswordResetCode
 from models.auth_models.email_tokens_model import Token
+from models.auth_models.refresh_token_model import RefreshToken
 
 
 class User(Base):
@@ -19,3 +20,5 @@ class User(Base):
     
     usr_reset_codes = relationship(PasswordResetCode, back_populates="usr_user")
     usr_email_token = relationship(Token, back_populates="ect_user", cascade="all, delete-orphan", passive_deletes=True)
+    usr_refresh_tokens = relationship(RefreshToken, back_populates="usr_user")
+
