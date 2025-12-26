@@ -13,12 +13,11 @@ class DailyLogFileHandler(logging.Handler):
         self._update_file()
 
     def _update_file(self):
-        """Atualiza o arquivo de log para o dia atual"""
+        
         current_date = datetime.now().strftime("%Y-%m-%d")
         if current_date != self.date:
             self.date = current_date
 
-            # Fechar arquivo anterior
             if self.file:
                 self.file.close()
 
@@ -26,13 +25,12 @@ class DailyLogFileHandler(logging.Handler):
             self.file = open(file_path, "a", encoding="utf-8")
 
     def emit(self, record):
-        """Escreve a linha de log no arquivo correto do dia"""
         self._update_file()
         log_entry = self.format(record)
         self.file.write(log_entry + "\n")
         self.file.flush()
 
-# Criar logger
+
 logger = logging.getLogger("app")
 logger.setLevel(logging.INFO)
 

@@ -7,18 +7,19 @@ import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    #logger.info("Aplication started")
+    logger.info("Aplication started")
     
     yield
-    #logger.info("Aplication ended")
+    logger.info("Aplication ended")
 
 
 app = FastAPI(
-    title="BaseAPI",
-    description="API RESTful com autenticação JWT.",
+    title="Auth API",
+    description="RESTful authentication API built with FastAPI, providing secure user authentication using JWT, email verification, and password recovery flows.",
     version="1.0.0",
     lifespan=lifespan
 )
+
 
 origins = os.getenv("CORS_ORIGINS")
 origins = [origin.strip() for origin in origins.split(",")]

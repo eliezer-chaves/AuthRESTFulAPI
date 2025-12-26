@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, Response, Request, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from logging_config import logger
 from models.auth_models.user_model import User
 from models.auth_models.password_reset_code_model import PasswordResetCode
 from schemas.user_schema import UserEmail
@@ -64,8 +63,7 @@ async def request_password_reset(payload: UserEmail, response: Response, request
 
         }
 
-    except Exception as e:
-        logger.error("error saving reset code: %s", str(e))
+    except Exception:
         raise HTTPException(
             status_code=500,
             detail={
@@ -79,7 +77,6 @@ def verify_reset_code(body: dict, response: Response, request: Request, db: Sess
 
     code=body.get("code")
 
-    # Sem código → invalid_or_expired_code
     if not code:
         raise HTTPException(
             status_code=400,
@@ -115,11 +112,9 @@ def verify_reset_code(body: dict, response: Response, request: Request, db: Sess
         )
 
     # Normalizar timezone
-    expires_at=reset_code.psc_expires_at
     if expires_at.tzinfo is None:
         expires_at=expires_at.replace(tzinfo=timezone.utc)
 
-    # Código expirado → invalid_or_expired_code
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=410,
@@ -130,9 +125,7 @@ def verify_reset_code(body: dict, response: Response, request: Request, db: Sess
             }
         )
 
-    # Marca como usado
     reset_code.psc_used_at=datetime.now(timezone.utc)
-    # Get code
     code=reset_code.psc_code
    
     create_cookie_code_valid(code, response)
@@ -142,32 +135,46 @@ def verify_reset_code(body: dict, response: Response, request: Request, db: Sess
         "title": "Code verified successfully.",
         "message": "The verification code is valid."
     }
-
-def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
+    
+def authorize_password_reset(request: Request, db: Session = Depends(get_db)):
 
     cookie = CookieReader.get_cookie_email_code_valid(request)
     
     if not cookie:
-        raise HTTPException(status_code=403, detail="Reset not authorized")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "reset_not_authorized",
+                "title": "Reset Not Authorized",
+                "message": "No valid password reset authorization was found."
+            }
+        )
 
-    # 1️⃣ Estrutura do cookie
     try:
-        code, signature=cookie.split("|")
+        code, signature = cookie.split("|")
     except ValueError:
-        raise HTTPException(status_code=403, detail="Invalid reset token")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "invalid_reset_token_format",
+                "title": "Invalid Reset Token",
+                "message": "The password reset token format is invalid."
+            }
+        )
 
-    # 2️⃣ Assinatura HMAC
-    expected_signature=hmac.new(
-        os.getenv("COOKIE_SECRET").encode(),
-        code.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    expected_signature = hmac.new(os.getenv("COOKIE_SECRET").encode(), code.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(signature, expected_signature):
-        raise HTTPException(status_code=403, detail="Invalid reset token")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "invalid_reset_token_signature",
+                "title": "Invalid Reset Token",
+                "message": "The password reset token signature is invalid."
+            }
+        )
 
-    # 3️⃣ Reset válido no banco
-    reset=(
+    reset = (
         db.query(PasswordResetCode)
         .filter(
             PasswordResetCode.psc_code == code,
@@ -179,9 +186,15 @@ def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
 
     if not reset:
         raise HTTPException(
-            status_code=403, detail="Reset flow expired or invalid")
+            status_code=403,
+            detail={
+                "type": "reset_flow_invalid_or_expired",
+                "title": "Reset Flow Invalid",
+                "message": "The password reset flow is invalid or has expired."
+            }
+        )
 
-    reset.psc_used_at=datetime.now(timezone.utc)
+    reset.psc_used_at = datetime.now(timezone.utc)
     db.commit()
 
     return {
@@ -189,46 +202,80 @@ def authorize_password_reset(request: Request, db: Session=Depends(get_db)):
         "expires_at": reset.psc_expires_at
     }
 
-def get_password_reset_status(request: Request, db: Session=Depends(get_db)):
-   
+
+def get_password_reset_status(request: Request, db: Session = Depends(get_db)):
+
     cookie = CookieReader.get_cookie_email_sended_to_reset_password(request)
 
     if not cookie:
-        raise HTTPException(status_code=403, detail={ "access": "denied", "message": "not_found"})
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "reset_status_not_authorized",
+                "title": "Access Denied",
+                "message": "No active password reset request was found."
+            }
+        )
 
     try:
-        reset_id, signature=cookie.split("|")
+        reset_id, signature = cookie.split("|")
     except ValueError:
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_reset_cookie",
+                "title": "Invalid Reset Token",
+                "message": "The password reset token format is invalid."
+            }
+        )
 
-    expected=hmac.new(os.getenv("COOKIE_SECRET").encode(),
-                        reset_id.encode(),
-                        hashlib.sha256).hexdigest()
+    expected = hmac.new(os.getenv("COOKIE_SECRET").encode(), reset_id.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "reset_cookie_signature_invalid",
+                "title": "Invalid Reset Token",
+                "message": "The password reset token signature is invalid."
+            }
+        )
 
-    reset=(
+    reset = (
         db.query(PasswordResetCode)
         .filter_by(psc_reset_id=reset_id)
-        .first())
+        .first()
+    )
 
     if reset.psc_used_at is None:
-        raise HTTPException(status_code=401, detail={
-            "title": "cookie already used"
-        })
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "reset_flow_not_verified",
+                "title": "Reset Code Not Verified",
+                "message": "The password reset code has not been verified yet."
+            }
+        )
 
-    email=reset.usr_user.usr_email
+    email = reset.usr_user.usr_email
 
-    expires_at=reset.psc_expires_at.replace(tzinfo=timezone.utc)
+    expires_at = reset.psc_expires_at.replace(tzinfo=timezone.utc)
 
     if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "reset_flow_expired",
+                "title": "Password Reset Expired",
+                "message": "The password reset request has expired."
+            }
+        )
 
     return {
         "email": mask_email(email),
         "expires_at": expires_at
     }
+
 
 def update_password(body: dict, request: Request, response: Response, db: Session=Depends(get_db)):
     usr_password=body.get("usr_password")
@@ -237,13 +284,21 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
     if not usr_password or not usr_password_confirmation:
         raise HTTPException(
             status_code=400,
-            detail="Missing password fields"
+            detail={
+                "type": "missing_password_fields",
+                "title": "Missing Password Fields",
+                "message": "Both password and password confirmation are required."
+            }
         )
 
     if usr_password != usr_password_confirmation:
         raise HTTPException(
             status_code=400,
-            detail="Passwords do not match"
+            detail={
+                "type": "passwords_do_not_match",
+                "title": "Passwords Do Not Match",
+                "message": "The password and confirmation password must be the same."
+            }
         )
 
     cookie = CookieReader.get_cookie_email_code_valid(request)
@@ -251,25 +306,37 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
     if not cookie:
         raise HTTPException(
             status_code=403,
-            detail="Reset not authorized"
-        )
+            detail={
+                "type": "password_reset_not_authorized",
+                "title": "Password Reset Not Authorized",
+                "message": "You are not authorized to reset the password. Please restart the password reset process."
+            }
+    )
 
     try:
-        code, signature=cookie.split("|")
+        code, signature = cookie.split("|")
     except ValueError:
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_reset_cookie_format",
+                "title": "Invalid Reset Token",
+                "message": "The password reset token format is invalid."
+            }
+        )
 
-    # 3️⃣ Valida assinatura do cookie
-    expected=hmac.new(
-        os.getenv("COOKIE_SECRET").encode(),
-        code.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    expected=hmac.new(os.getenv("COOKIE_SECRET").encode(), code.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_reset_cookie_signature",
+                "title": "Invalid Reset Token",
+                "message": "The password reset token is invalid or has been tampered with."
+            }
+        )
 
-    # 4️⃣ Busca reset (NÃO filtra por used_at)
     reset=(
         db.query(PasswordResetCode)
         .filter(PasswordResetCode.psc_code == code)
@@ -279,10 +346,13 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
     if not reset:
         raise HTTPException(
             status_code=404,
-            detail="Invalid reset flow"
+            detail={
+                "type": "reset_flow_not_found",
+                "title": "Invalid Password Reset Flow",
+                "message": "The password reset process could not be found or is no longer valid."
+            }
         )
 
-    # 5️⃣ Expiração
     expires_at=reset.psc_expires_at
 
     if expires_at.tzinfo is None:
@@ -291,7 +361,11 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=410,
-            detail="Reset expired"
+            detail={
+                "type": "reset_flow_expired",
+                "title": "Password Reset Expired",
+                "message": "The password reset link or code has expired. Please request a new one."
+            }
         )
 
     user=(
@@ -303,7 +377,11 @@ def update_password(body: dict, request: Request, response: Response, db: Sessio
     if not user:
         raise HTTPException(
             status_code=404,
-            detail="User not found"
+            detail={
+                "type": "user_not_found",
+                "title": "User Not Found",
+                "message": "No user was found for the provided password reset information."
+            }
         )
 
     user.usr_password=hash_password(usr_password)

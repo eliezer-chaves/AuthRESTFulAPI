@@ -9,7 +9,6 @@ router = APIRouter(
     tags=["Password Reset Flow"]
 )
 
-
 @ router.post("")
 async def request_password_reset_route(payload: UserEmail, response: Response, request: Request, db: Session=Depends(get_db)):
    return await password_reset_service.request_password_reset(payload, response, request, db)
@@ -17,7 +16,6 @@ async def request_password_reset_route(payload: UserEmail, response: Response, r
 @ router.post("/verification")
 def verify_reset_code_route(body: dict, response: Response, request: Request, db: Session=Depends(get_db)):
     return password_reset_service.verify_reset_code(body, response, request, db)
-
 
 @ router.get("/authorization")
 def authorize_password_reset_route(request: Request, db: Session=Depends(get_db)):

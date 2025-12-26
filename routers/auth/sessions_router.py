@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, Request
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from database import get_db
 from models.auth_models.user_model import User
@@ -21,13 +21,11 @@ router = APIRouter(
 def create_session_route(payload: UserLogin, response: Response, db: Session = Depends(get_db)):
     return auth_service.login(payload, response, db)
 
-
 @ router.delete("/current", status_code=204)
 def delete_session_route(response: Response, token: str=Depends(get_token_from_cookie)):
     token_blacklist.add(token)
     clear_auth_cookie(response)
     delete_all_cookies(response)    
-
 
 @ router.get("/current", response_model=UserResponse)
 def get_current_user_info_route(current_user: User=Depends(get_current_user)):

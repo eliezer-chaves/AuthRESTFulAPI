@@ -1,264 +1,488 @@
-# BaseAPI
+# AuthAPI
 
-FastAPI backend with JWT authentication + HTTP-only Cookies, SQLAlchemy ORM, and Alembic migrations.
+RESTful API built with FastAPI featuring JWT authentication, HTTP-only cookies, email verification, password recovery, SQLAlchemy ORM, and Alembic migrations.
 
-## 📋 Table of Contents
+---
 
-- [About the Project](#about-the-project)
-- [Features](#features)
-- [Technologies Used](#technologies-used)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Environment Configuration](#environment-configuration)
-- [Local HTTPS Configuration](#local-https-configuration)
-- [Database Migrations](#database-migrations)
-- [Running the Project](#running-the-project)
-- [Project Structure](#project-structure)
-- [Frontend](#frontend)
+## 📌 About the Project
 
-## 🎯 About the Project
+AuthAPI is a production-ready RESTful authentication API built with FastAPI.  
+It provides secure session management using JWT stored in HTTP-only cookies, full email-based account validation, password reset flows, and database versioning with Alembic.
 
-BaseAPI is a complete REST API built with FastAPI, offering secure authentication, database management, and local HTTPS support.
+This project is designed to be used as a backend foundation for web applications that require secure authentication and session handling.
+
+---
 
 ## ✨ Features
 
-- 🔐 **JWT Authentication** - Secure tokens with HTTP-only cookies
-- 🗄️ **SQLAlchemy ORM** - Efficient database management
-- 🔄 **Alembic Migrations** - Database version control
-- 📧 **Email Validation** - Valid email verification
-- 🔒 **SSL Support** - Local HTTPS with mkcert
-- 📝 **Logging System** - Activity recording
-- 🔑 **Password Hashing** - Bcrypt for security
-- 🍪 **Cookie Manager** - Secure cookie management
+- 🔐 **JWT Authentication**
+  - Access tokens with configurable expiration
+  - Secure token generation and validation
+- 🍪 **HTTP-only Cookie Sessions**
+  - Secure against XSS attacks
+  - SameSite protection
+  - Configurable TTL
+- 📧 **Email Account Confirmation**
+  - Token-based email verification
+  - HTML email templates
+  - Resend confirmation capability
+- 🔁 **Password Reset Flow**
+  - One-time reset codes
+  - Expiration and reuse protection
+- 🧠 **Authentication Services Layer**
+  - Clear separation between routers, services, and providers
+  - Modular architecture for easy maintenance
+- 🗄️ **SQLAlchemy ORM**
+  - MySQL and PostgreSQL support
+  - Relationship mapping
+- 🔄 **Alembic Migrations**
+  - Versioned database schema
+  - Easy rollback capability
+- 🔑 **Password Hashing**
+  - Bcrypt via Passlib (cost factor 12)
+- 📝 **Centralized Logging**
+  - Daily log files with rotation
+  - Comprehensive activity tracking
+- 🔒 **Local HTTPS Support**
+  - mkcert for secure cookie testing in development
+
+---
 
 ## 🛠️ Technologies Used
 
-- **FastAPI** - Modern and fast web framework
-- **Uvicorn** - ASGI server
-- **SQLAlchemy** - ORM for Python
-- **Alembic** - Database migration tool
-- **PyMySQL** - MySQL driver for Python
-- **Psycopg2** - PostgreSQL adapter
-- **Passlib[bcrypt]** - Password hashing library
-- **Python-JOSE** - JWT implementation
-- **Python-Multipart** - File upload support
-- **Email-Validator** - Email address validation
-- **Python-Dotenv** - Environment variable management
+- **FastAPI** 0.123.9 - Modern, fast web framework
+- **Uvicorn** 0.38.0 - ASGI server
+- **SQLAlchemy** 2.0.44 - SQL toolkit and ORM
+- **Alembic** 1.17.2 - Database migration tool
+- **PyMySQL** 1.1.2 - MySQL driver
+- **Passlib[bcrypt]** 1.7.4 - Password hashing library
+- **Python-JOSE** 3.5.0 - JWT implementation
+- **FastAPI-Mail** 1.6.0 - Email sending service
+- **Python-Dotenv** 1.2.1 - Environment variable management
+- **Email-Validator** 2.3.0 - Email address validation
 
-## 📦 Prerequisites
+---
 
-Before starting, make sure you have installed:
+## 📦 Requirements
 
-- **Python** 3.11+ 
+Before starting, ensure you have:
+
+- **Python** 3.11+
 - **pip** (Python package manager)
-- **MySQL** or **PostgreSQL**
-- **Git** (to clone the repository)
-- **mkcert** (for local SSL certificates - optional)
+- **Git**
+- **MySQL** database
+- **SMTP Email Account** (Gmail, SendGrid, etc.)
+- **mkcert** (optional, for local HTTPS)
 
-## 🚀 Installation
+---
 
-### 1️⃣ Create and activate virtual environment
+## 📥 Clone the Repository
+
+```bash
+git clone https://github.com/eliezer-chaves/BaseAPI.git
+cd BaseAPI
+```
+
+---
+
+## 🧪 Virtual Environment Setup
+
+### Create a virtual environment
 
 **Windows:**
 ```bash
 python -m venv venv
 ```
+
+**Linux / macOS:**
+```bash
+python3 -m venv venv
+```
+
+### Activate the virtual environment
+
+**Windows:**
 ```bash
 venv\Scripts\activate
 ```
 
-**Linux/Mac:**
-```bash
-python -m venv venv
-```
+**Linux / macOS:**
 ```bash
 source venv/bin/activate
 ```
 
-### 2️⃣ Install dependencies
+---
+
+## 📦 Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## ⚙️ Environment Configuration
+---
 
-### Rename the example file:
+## ⚙️ Environment Variables
 
-```bash
-.env.example → .env
-```
+Create a `.env` file based on `.env.example`.
 
-### Fill in your variables:
+### Database Configuration
 
-**For MySQL:**
+**MySQL:**
 ```env
-DB_USER=root	
-DB_PASSWORD=root
+DB_NAME=your_database_name
+DB_USER=your_database_user
+DB_PASSWORD=your_database_password
 DB_HOST=localhost
 DB_PORT=3306
-DB_NAME=db	
 ```
 
-**Allowed Domain Origins to Access the API**
-***Important for CORS***
+### JWT & Security
+
+```env
+SECRET_KEY=your_jwt_secret_key_here
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+```
+
+> **Tip:** Generate a strong JWT secret key at [JWT Secret Key Generator](https://jwtsecretkeygenerator.com/)
+
+### Cookies
+
+```env
+AUTH_COOKIE_MAX_AGE=86400
+COOKIE_SECRET=your_cookie_secret_key
+SHORT_LIVED_TTL_MINUTES=5
+```
+
+> ⚠️ **Important:** HTTP-only cookies with `Secure=True` require HTTPS. This API is designed to run over HTTPS in development and production.
+
+### CORS
+
 ```env
 CORS_ORIGINS=https://localhost:4200
 ```
 
-**JWT Key**
+For multiple origins, use comma separation:
 ```env
-JWT_SECRET=put_a_strong_secret_here
+CORS_ORIGINS=https://localhost:4200,https://yourdomain.com
 ```
 
-> **Tip:** Generate a strong JWT key using: [JWT Secret Key Generator](https://jwtsecretkeygenerator.com/)
+### Email Configuration (Gmail SMTP)
 
-## 🔒 Local HTTPS Configuration
+```env
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your_email@gmail.com
+MAIL_PASSWORD=your_app_password
+MAIL_FROM=your_email@gmail.com
+MAIL_FROM_NAME=AuthAPI
+MAIL_STARTTLS=True
+MAIL_SSL_TLS=False
+```
 
-This project includes local SSL support using mkcert.
+### App URLs
 
-### 📥 1️⃣ Download mkcert
+```env
+APP_NAME=AuthAPI
+FRONT_URL=https://localhost:4200
+```
 
-Download the executable for Windows:
+---
 
-[https://github.com/FiloSottile/mkcert/releases](https://github.com/FiloSottile/mkcert/releases)
+## 📧 Gmail App Password (Required)
 
-Recommended file: `mkcert-v1.4.4-windows-amd64.exe`
+Gmail does not allow normal account passwords for SMTP authentication.
 
-Rename to: `mkcert.exe`
+### Steps to generate an App Password:
 
-And place it in a folder in PATH, for example: `C:\Windows\System32`
+1. **Enable 2-Step Verification** on your Google account
 
-Or simply keep it in the project folder.
+2. **Go to App Passwords:**
+   - Visit: [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
 
-### 🏦 2️⃣ Install the root CA (only the first time)
+3. **Create a new app password:**
+   - Select app: Mail
+   - Select device: Other (custom name)
+   - Click "Generate"
 
-Open PowerShell as administrator and run:
+4. **Use the generated password** in your `.env`:
+   ```env
+   MAIL_PASSWORD=xxxxxxxxxxxxxxxx
+   ```
+
+---
+
+## 🔒 HTTPS Configuration (Required for HTTP-only Cookies)
+
+### Install mkcert
+
+**Windows:**
+- Download from: [https://github.com/FiloSottile/mkcert/releases](https://github.com/FiloSottile/mkcert/releases)
+- Recommended: `mkcert-v1.4.4-windows-amd64.exe`
+- Rename to `mkcert.exe` and add to PATH
+
+**Linux:**
+```bash
+sudo apt install mkcert  # Debian/Ubuntu
+```
+
+**macOS:**
+```bash
+brew install mkcert
+```
+
+### Install local CA (run once)
 
 ```bash
 mkcert -install
 ```
 
-### 📍 3️⃣ Navigate to the project folder
+### Generate SSL certificates
 
-```bash
-cd BaseAPI
-```
-
-### 🔏 4️⃣ Generate SSL certificates
+Navigate to your project folder and run:
 
 ```bash
 mkcert localhost 127.0.0.1 ::1
 ```
 
-> **Note:** Only for local development. Some hosting providers already provide SSL certificates, which are necessary to use HTTP-only cookies.
-
-This will create files like:
+This will generate:
 - `localhost+2.pem` (certificate)
 - `localhost+2-key.pem` (private key)
 
+---
+
+## ▶️ Running the Application
+
+### HTTPS (Recommended)
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000 --ssl-certfile localhost+2.pem --ssl-keyfile localhost+2-key.pem
+```
+
+**Access:**
+- API: `https://localhost:8000`
+- Docs: `https://localhost:8000/docs`
+- ReDoc: `https://localhost:8000/redoc`
+
+### Production
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --ssl-certfile /path/to/cert.pem --ssl-keyfile /path/to/key.pem
+```
+
+### ⚠️ Running Without HTTPS (Not Recommended)
+
+If you must run over HTTP for testing, modify cookie settings in:
+- `core/handler/cookie_manager.py`
+
+Change:
+- `secure=False`
+- Adjust `samesite` parameter
+
+**Note:** This is only for local testing. In production, always use HTTPS.
+
+---
+
 ## 🧪 Database Migrations
 
-### Apply migration (will generate the usr_user table):
+### Apply all migrations
+
+Run after configuring `.env`:
 
 ```bash
 alembic upgrade head
 ```
 
-### Create a new migration:
+This creates:
+- `usr_users` table (user accounts)
+- `email_confirmation_tokens` table (email verification)
+- `password_reset_codes` table (password recovery)
+
+### Create a new migration
 
 ```bash
 alembic revision -m "migration description"
 ```
 
-### Rollback last migration:
+### Rollback last migration
 
 ```bash
 alembic downgrade -1
 ```
 
-### View migration history:
+### View migration history
 
 ```bash
 alembic history
 ```
 
-## ▶️ Running the Project
+---
 
-### Development Server (HTTP)
+## 🌐 API Routes
 
-```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+### Authentication Routes
 
-Access: `http://localhost:8000`
+#### Sessions (Login/Logout)
+- `POST /auth/sessions/login` - User login
+- `POST /auth/sessions/logout` - User logout
+- `GET /auth/sessions/validate` - Validate current session
 
-### Development Server (HTTPS)
+#### Accounts (Registration/Verification)
+- `POST /auth/accounts/register` - Create new account
+- `POST /auth/accounts/confirm` - Confirm email with token
+- `POST /auth/accounts/resend-confirmation` - Resend confirmation email
 
-After generating the certificates, run:
+#### Password Resets
+- `POST /auth/password-resets/request` - Request password reset code
+- `POST /auth/password-resets/validate` - Validate reset code
+- `POST /auth/password-resets/reset` - Reset password with code
 
-```bash
-uvicorn main:app --reload --ssl-keyfile localhost+2-key.pem --ssl-certfile localhost+2.pem --host 0.0.0.0 --port 8000
-```
-
-Now your backend is on local HTTPS: [https://localhost:8000](https://localhost:8000)
+---
 
 ## 📂 Project Structure
 
 ```
 BaseAPI/
-├── alembic/              # Database migrations
-│   └── versions/         # Migration versions
-├── infra/                # Infrastructure
-│   ├── auth/            # Authentication services
-│   │   ├── auth_service.py
-│   │   └── cookie_manager.py
-│   ├── dependencies/    # FastAPI dependencies
-│   └── providers/       # Providers (hash, JWT)
-│       ├── hash_provider.py
-│       └── jwt_provider.py
-├── models/              # SQLAlchemy models
-│   └── user.py
-├── routers/             # API routes
-│   ├── auth.py
-│   └── users.py
-├── schemas/             # Pydantic schemas
-│   └── user.py
-├── .env                 # Environment variables (not versioned)
-├── .env.example         # Environment variables example
-├── .gitignore           # Files ignored by Git
-├── alembic.ini          # Alembic configuration
-├── database.py          # Database configuration
-├── logging_config.py    # Logging configuration
-├── main.py              # Application entry point
-└── requirements.txt     # Project dependencies
+├── alembic/                          # Database migrations
+│   ├── versions/                     # Migration version files
+│   │   ├── f5dbc96d3811_create_usr_users_table.py
+│   │   ├── 0c4f9a65af1b_email_confirmation_token_table.py
+│   │   └── 2cf037885739_create_password_reset_codes_table.py
+│   ├── env.py
+│   └── script.py.mako
+├── core/                                       # Core application logic
+│   ├── config/                                 # Configuration files
+│   │   └── email_config.py                     # Email service configuration
+│   ├── handler/                                # Request/Response handlers
+│   │   └── cookie_manager.py                   # HTTP-only cookie management
+│   ├── providers/                              # Security providers
+│   │   ├── hash_provider.py                    # Password hashing with bcrypt
+│   │   └── jwt_provider.py                     # JWT token generation/validation
+│   ├── services/                               # Business logic services
+│   │   ├── auth/                               # Authentication services
+│   │   │   ├── auth_service.py                 # Login/logout logic
+│   │   │   └── password_reset_service.py       # Password reset flow
+│   │   └── email_service.py                    # Email sending service
+│   ├── templates/                              # HTML email templates
+│   │   ├── confirm_account.html                # Account confirmation email
+│   │   └── reset_password.html                 # Password reset email
+│   └── utils/                                  # Utility functions
+│       └── email_utils.py                      # Email helpers
+├── logs/                                       # Application logs (daily rotation)
+│   └── YYYY-MM-DD.log                          # Daily log files
+├── models/                                     # SQLAlchemy models
+│   └── auth_models/                            # Authentication models
+│       ├── user_model.py                       # User account model
+│       ├── email_tokens_model.py               # Email verification tokens
+│       ├── password_reset_code_model.py        # Password reset codes
+│       └── __init__.py
+├── routers/                                    # API route handlers
+│   └── auth/                                   # Authentication routes
+│       ├── sessions_router.py                  # Login/logout endpoints
+│       ├── accounts_router.py                  # Registration/verification
+│       └── password_resets_router.py           # Password reset endpoints
+├── schemas/                                    # Pydantic validation schemas
+│   └── user_schema.py                          # User request/response schemas
+├── .env                                        # Environment variables (not in git)
+├── .env.example                                # Environment variables template
+├── .gitignore                                  # Git ignore rules
+├── alembic.ini                                 # Alembic configuration
+├── database.py                                 # Database connection setup
+├── logging_config.py                           # Logging configuration
+├── main.py                                     # Application entry point
+├── requirements.txt                            # Python dependencies
+└── README.md                                   # This file
 ```
 
-## 🔗 Frontend
-
-This project serves as the backend for a frontend application. To configure and run the frontend, visit:
-
-**BaseFrontAngular:** [https://github.com/eliezer-chaves/BaseFrontAngular.git](https://github.com/eliezer-chaves/BaseFrontAngular.git)
-
-Make sure the backend is running before starting the frontend to ensure the full functionality of the application.
+---
 
 ## 📚 API Documentation
 
-With the server running, access:
+Once the server is running, access the interactive documentation:
 
 - **Swagger UI:** `https://localhost:8000/docs`
 - **ReDoc:** `https://localhost:8000/redoc`
 
-## 📝 License
-
-Personal and educational use project.
-
-## 👨‍💻 Author
-
-Developed by Eliézer Chaves
+Both provide complete API documentation with request/response examples and the ability to test endpoints directly from your browser.
 
 ---
 
-⭐ If this project was useful to you, consider giving the repository a star!
+## 🔐 Security Features
 
-Developed with ❤️ using FastAPI
+- ✅ HTTP-only cookies prevent XSS attacks
+- ✅ CORS configuration limits allowed origins
+- ✅ JWT tokens with configurable expiration
+- ✅ Bcrypt password hashing (cost factor 12)
+- ✅ Email verification prevents fake accounts
+- ✅ Rate limiting on email sending
+- ✅ Secure password reset flow with time-limited codes
+- ✅ SQL injection protection via SQLAlchemy ORM
+- ✅ SameSite cookie protection
+
+---
+
+## 🐛 Troubleshooting
+
+### Database connection issues
+- Verify database credentials in `.env`
+- Ensure database server is running
+- Check that database exists (`DB_NAME`)
+- Test connection manually
+
+### Email not sending
+- Verify SMTP credentials
+- For Gmail, use App Password, not regular password
+- Check firewall/antivirus blocking port 587
+- Test SMTP connection separately
+
+### SSL certificate errors
+- Re-run `mkcert -install`
+- Regenerate certificates: `mkcert localhost 127.0.0.1 ::1`
+- Clear browser cache and restart browser
+
+### Import errors
+- Ensure virtual environment is activated
+- Re-install dependencies: `pip install -r requirements.txt`
+- Check Python version (3.11+ required)
+
+### Cookie not being set
+- Ensure HTTPS is enabled (cookies with `Secure=True` require HTTPS)
+- Check CORS_ORIGINS matches your frontend URL
+- Verify browser allows third-party cookies
+
+---
+
+## 🔗 Frontend Integration
+
+This backend is designed to work with a frontend application.
+
+**BaseFrontAngular:** [https://github.com/eliezer-chaves/BaseFrontAngular](https://github.com/eliezer-chaves/BaseFrontAngular)
+
+The frontend includes:
+- Login/Registration forms
+- Email verification flow
+- Password reset functionality
+- Protected routes with JWT authentication
+- HTTP-only cookie handling
+
+Make sure the backend is running before starting the frontend application.
+
+---
+
+## 📝 License
+
+This project is for personal and educational use.
+
+---
+
+## 👨‍💻 Author
+
+**Developed by Eliézer Chaves**
+
+- GitHub: [@eliezer-chaves](https://github.com/eliezer-chaves)
+
+---
+
+⭐ If this project helped you, consider starring the repository!
+
+💻 Built with security, caffeine, and FastAPI ❤️

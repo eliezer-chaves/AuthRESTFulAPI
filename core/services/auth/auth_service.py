@@ -250,9 +250,15 @@ async def create_user(payload: UserCreate, response: Response, db: Session = Dep
             "message": "Confirm your email to get access to your account.",
         }
 
-    except Exception as e:
-        logger.error("Unexpected error creating user: %s", str(e))
-        raise HTTPException(status_code=500)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "internal_error",
+                "title": "Internal Error",
+                "message": "An error occurred while processing your request."
+            }
+        )
 
 def validate_account(body: dict, response: Response, db: Session = Depends(get_db)):
     token_from_url = body.get("token")
@@ -264,7 +270,6 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
             "message": "Confirm your email to get access to your account.",
         })
 
-    # Busca token no banco
     token_db = db.query(Token).filter(
         Token.ect_token == token_from_url).first()
 
@@ -272,10 +277,9 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
         raise HTTPException(status_code=410, detail={
             "type": "token_not_found",
             "title": "Invalid or Expired Link",
-            "message": "This confirmation link is no longer valid. Your email may already be verified. Please try logging in."})
+            "message": "This confirmation link is no longer valid. Your email may already be verified. Please try logging in."
+        })
 
-
-    # Valida expiração
     expires_at=token_db.ect_expires_at
     if expires_at.tzinfo is None:
         expires_at=expires_at.replace(tzinfo=timezone.utc)
@@ -290,10 +294,8 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
         }
     )
 
-    # Pega o usuário associado
     user=token_db.ect_user
 
-    # Atualiza status do usuário
     user.usr_email_verified=True
     user.usr_user_active=True
     db.add(user)
@@ -303,14 +305,15 @@ def validate_account(body: dict, response: Response, db: Session = Depends(get_d
     db.delete(token_db)
     db.commit()
 
-    # Cria JWT e seta cookie (SEM try/except para ver erro real)
-    jwt_token=create_access_token(
-        {"sub": str(user.usr_id), "email": user.usr_email})
+    jwt_token=create_access_token( 
+        {
+            "sub": str(user.usr_id),
+            "email": user.usr_email
+        }
+    )
    
-
     set_auth_cookie(response, jwt_token)
     
-
     clear_cookie_registration_sended(response)
     
     return {
@@ -323,20 +326,45 @@ def check_email_status(request: Request, db: Session = Depends(get_db)):
     cookie = CookieReader.get_cookie_registration_email_sended(request)
     
     if not cookie:
-        raise HTTPException(status_code=403, detail={"access": "denied", "message": "not_found"})
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "email_status_not_authorized",
+                "title": "Access Denied",
+                "message": "No valid email registration status was found."
+            }
+        )
 
     try:
         hashed_token, signature = cookie.split("|")
     except ValueError:
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_cookie_format",
+                "title": "Invalid Cookie",
+                "message": "The registration status cookie format is invalid."
+            }
+        )
 
     expected = hmac.new(os.getenv("COOKIE_SECRET").encode(), hashed_token.encode(), hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(signature, expected):
-        raise HTTPException(status_code=401)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_cookie_signature",
+                "title": "Invalid Cookie",
+                "message": "The registration status cookie signature is invalid."
+            }
+        )
 
     return {
-        "email": "email sended",
+        "type": "email_status_found",
+        "title": "Email Status Available",
+        "message": "The email registration status was successfully retrieved."
     }
+
+
     
     
