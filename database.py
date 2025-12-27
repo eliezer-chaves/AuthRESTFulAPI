@@ -28,23 +28,22 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+
 def get_db():
     db = SessionLocal()
     try:
         yield db
 
+    except HTTPException:
+        # 🔁 deixa o FastAPI tratar (401, 403, etc)
+        raise
+
     except Exception as e:
         logger.error(f"Database session error: {e}")
-
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "database_session_error",
-                "title": "Database Error",
-                "message": "An unexpected error occurred while accessing the database."
-            }
-        )
+        raise
 
     finally:
         db.close()
+
+
         

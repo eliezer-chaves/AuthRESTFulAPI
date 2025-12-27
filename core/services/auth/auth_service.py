@@ -16,36 +16,29 @@ from core.handler.cookie_manager import (
     get_token_from_cookie,
     create_cookie_registration_sended,
     clear_cookie_registration_sended,
-    CookieReader
+    CookieReader,
+    set_refresh_cookie,
+    get_refresh_token_from_cookie
 )
 from core.services.email_service import send_confirmation_email
 from core.utils.email_utils import *
+from core.providers.jwt_provider import (
+    generate_refresh_token,
+    hash_refresh_token,
+    get_refresh_token_expiration
+)
+from models.auth_models.refresh_token_model import RefreshToken
+
 
 token_blacklist = set()
 
-def get_current_user(token: str = Depends(get_token_from_cookie), db: Session = Depends(get_db)) -> User:
 
-    if token in token_blacklist:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "type": "invalid_or_expired_token",
-                "title": "Invalid or Expired Token",
-                "message": "The provided authentication token is invalid or has expired."
-            }
-        )
-        
-    payload = decode_access_token(token)
-    
-    if not payload:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "type": "invalid_token",
-                "title": "Invalid Token",
-                "message": "The authentication token provided is not valid."
-            }
-        )
+def get_current_user(
+    token: str = Depends(get_token_from_cookie),
+    db: Session = Depends(get_db)
+) -> User:
+
+    payload = decode_access_token(token)  
     
     user_id = payload.get("sub")
     
@@ -55,22 +48,24 @@ def get_current_user(token: str = Depends(get_token_from_cookie), db: Session = 
             detail={
                 "type": "invalid_token_payload",
                 "title": "Invalid Token Payload",
-                "message": "The token payload is missing required user information."
+                "message": "Missing subject."
             }
         )
 
     user = db.query(User).filter(User.usr_id == int(user_id)).first()
+    
     if not user:
         raise HTTPException(
             status_code=401,
             detail={
                 "type": "user_not_found",
                 "title": "User Not Found",
-                "message": "No user exists for the authentication token provided."
+                "message": "User does not exist."
             }
         )
-        
+
     return user
+
 
 def login(payload: UserLogin, response: Response, db):
     
@@ -122,7 +117,21 @@ def login(payload: UserLogin, response: Response, db):
             })
         
     set_auth_cookie(response, token)
-    
+    refresh_token = generate_refresh_token()
+
+    db_refresh = RefreshToken(
+        rft_user_id=user.usr_id,
+        rft_hash_token=hash_refresh_token(refresh_token),
+        rft_expires_at=get_refresh_token_expiration(),
+        rft_created_at=datetime.now(timezone.utc),
+        rft_last_used_at=datetime.now(timezone.utc)
+    )
+
+    db.add(db_refresh)
+    db.commit()
+
+    set_refresh_cookie(response, refresh_token)
+
     return {
             "type": "login_success",
             "title": "Login successful",
@@ -365,6 +374,143 @@ def check_email_status(request: Request, db: Session = Depends(get_db)):
         "message": "The email registration status was successfully retrieved."
     }
 
+def refresh_session(request: Request, response: Response, db: Session):
+    
+    raw_refresh = get_refresh_token_from_cookie(request)
+    hashed = hash_refresh_token(raw_refresh)
+    
+    refresh = (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.rft_hash_token == hashed,
+            RefreshToken.rft_revoked_at.is_(None),
+            RefreshToken.rft_expires_at > datetime.now(timezone.utc)
+        )
+        .first()
+    )
 
+    if not refresh:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_refresh_token",
+                "title": "Invalid session",
+                "message": "Your session has expired. Please log in again."
+            }
+        )
     
+    # ✅ Revoga o refresh token antigo (rotation)
+    refresh.rft_revoked_at = datetime.now(timezone.utc)
+
+    new_refresh = generate_refresh_token()
+
+    db_refresh = RefreshToken(
+        rft_user_id=refresh.rft_user_id,
+        rft_hash_token=hash_refresh_token(new_refresh),
+        rft_expires_at=get_refresh_token_expiration(),
+        rft_created_at=datetime.now(timezone.utc),
+        rft_last_used_at=datetime.now(timezone.utc)
+    )
+
+    db.add(db_refresh)
+    db.commit()
     
+    access_token = create_access_token({
+        "sub": str(refresh.rft_user_id)
+    })
+
+    set_auth_cookie(response, access_token)
+    set_refresh_cookie(response, new_refresh)
+
+    return {
+        "type": "session_refreshed",
+        "title": "Session refreshed",
+        "message": "Your session was successfully renewed."
+    }
+
+def revoke_refresh_tokens_by_user(db: Session, user_id: int):
+    db.query(RefreshToken).filter(
+        RefreshToken.rft_user_id == user_id,
+        RefreshToken.rft_revoked_at.is_(None)
+    ).update(
+        {"rft_revoked_at": datetime.now(timezone.utc)}
+    )
+    db.commit()
+
+def debug_session(request, db: Session, user: User):
+    try:
+        # ===== Cookies =====
+        cookies = request.cookies
+
+        # ===== Access token =====
+        token = get_token_from_cookie(request)
+        payload = decode_access_token(token)
+
+        now = datetime.now(timezone.utc)
+        access_exp = datetime.fromtimestamp(
+            payload["exp"], tz=timezone.utc
+        )
+
+        # ===== Refresh token =====
+        refresh = (
+            db.query(RefreshToken)
+            .filter(
+                RefreshToken.rft_user_id == user.usr_id,
+                RefreshToken.rft_revoked_at.is_(None)
+            )
+            .order_by(RefreshToken.rft_created_at.desc())
+            .first()
+        )
+
+        refresh_expires_at = None
+        refresh_expires_in = None
+
+        if refresh:
+            refresh_expires_at = refresh.rft_expires_at
+
+            if refresh_expires_at.tzinfo is None:
+                refresh_expires_at = refresh_expires_at.replace(
+                    tzinfo=timezone.utc
+                )
+
+            refresh_expires_in = int(
+                (refresh_expires_at - now).total_seconds()
+            )
+
+        return {
+            "server_time": now.isoformat(),
+
+            "access_token": {
+                "expires_at": access_exp.isoformat(),
+                "expires_in_seconds": int(
+                    (access_exp - now).total_seconds()
+                ),
+            },
+
+            "refresh_token": {
+                "expires_at": (
+                    refresh_expires_at.isoformat()
+                    if refresh_expires_at else None
+                ),
+                "expires_in_seconds": refresh_expires_in,
+            },
+
+            "cookies_present": {
+                "access_token": "access_token" in cookies,
+                "refresh_token": "refresh_token" in cookies,
+            }
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "debug_session_error",
+                "title": "Session debug error",
+                "message": "Unable to retrieve session debug information."
+            }
+        )

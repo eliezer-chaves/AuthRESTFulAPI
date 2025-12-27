@@ -15,8 +15,8 @@ BASE_COOKIE_CONFIG = {
 }
 
 SHORT_LIVED_COOKIE_MAX_AGE = int(os.getenv("SHORT_LIVED_TTL_MINUTES")) * 60
-AUTH_COOKIE_MAX_AGE = int(os.getenv("AUTH_COOKIE_MAX_AGE"))
-
+AUTH_COOKIE_MAX_AGE = int(os.getenv("AUTH_COOKIE_MAX_AGE")) * 60
+REFRESH_TOKEN_EXPIRE = int(os.getenv("REFRESH_TOKEN_EXPIRE")) * 60
 # =========================
 # Cookie configs
 # =========================
@@ -25,6 +25,12 @@ COOKIE_AUTH_CONFIG = {
     **BASE_COOKIE_CONFIG,
     "key": "access_token",
     "max_age": AUTH_COOKIE_MAX_AGE,
+}
+
+COOKIE_REFRESH_CONFIG = {
+    **BASE_COOKIE_CONFIG,
+    "key": "refresh_token",
+    "max_age": REFRESH_TOKEN_EXPIRE,
 }
 
 COOKIE_REGISTRATION_SENDED_CONFIG = {
@@ -48,6 +54,7 @@ COOKIE_CODE_VALID_CONFIG = {
 # Coleção explícita (serve para bulk operations)
 ALL_COOKIE_CONFIGS = (
     COOKIE_AUTH_CONFIG,
+    COOKIE_REFRESH_CONFIG,
     COOKIE_REGISTRATION_SENDED_CONFIG,
     COOKIE_EMAIL_SENDED_CONFIG,
     COOKIE_CODE_VALID_CONFIG,
@@ -152,3 +159,26 @@ class CookieReader:
     @staticmethod
     def get_cookie_email_sended_to_reset_password(request: Request) -> str | None:
         return request.cookies.get(COOKIE_EMAIL_SENDED_CONFIG["key"])
+    
+    @staticmethod
+    def get_refresh_token_from_cookie(request: Request) -> str | None:
+        return request.cookies.get(COOKIE_REFRESH_CONFIG["key"])
+    
+def set_refresh_cookie(response: Response, token: str):
+    _set_cookie(response, COOKIE_REFRESH_CONFIG, token)
+
+def clear_refresh_cookie(response: Response):
+    _clear_cookie(response, COOKIE_REFRESH_CONFIG)
+
+def get_refresh_token_from_cookie(request: Request) -> str:
+    token = request.cookies.get(COOKIE_REFRESH_CONFIG["key"])
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "refresh_token_missing",
+                "title": "Refresh token missing",
+                "message": "Your session has expired. Please log in again."
+            }
+        )
+    return token

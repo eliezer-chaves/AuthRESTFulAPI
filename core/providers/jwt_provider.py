@@ -3,12 +3,14 @@ from jose import jwt
 import os
 import secrets
 import hmac, hashlib
+from jose import JWTError, ExpiredSignatureError
+from fastapi import HTTPException
+from logging_config import logger
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
-
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS"))
+REFRESH_TOKEN_EXPIRE = int(os.getenv("REFRESH_TOKEN_EXPIRE"))
 COOKIE_SECRET = os.getenv("COOKIE_SECRET")
 
 def create_access_token(data: dict):
@@ -18,13 +20,29 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def decode_access_token(token: str):
-    from jose import JWTError
+def decode_access_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except ExpiredSignatureError:
+        
+        
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "access_token_expired",
+                "title": "Access Token Expired",
+                "message": "Access token expired."
+            }
+        )
     except JWTError:
-        return None
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "invalid_token",
+                "title": "Invalid Token",
+                "message": "Invalid authentication token."
+            }
+        )
 
 def generate_refresh_token() -> str:
     return secrets.token_urlsafe(64)
@@ -37,4 +55,4 @@ def hash_refresh_token(token: str) -> str:
     ).hexdigest()
 
 def get_refresh_token_expiration() -> datetime:
-    return datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    return datetime.now(timezone.utc) + timedelta(minutes=REFRESH_TOKEN_EXPIRE)
